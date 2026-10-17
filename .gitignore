@@ -1,0 +1,159 @@
+# =========================================================
+# SECRETS / ENV
+# =========================================================
+.env
+.env.*
+!.env.example
+
+**/.env
+**/.env.*
+!**/.env.example
+
+# Private keys / certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# Google / Firebase private credentials
+*service-account*.json
+*serviceAccount*.json
+serviceAccountKey.json
+firebase-adminsdk*.json
+
+# Firebase app config - giữ local nếu chưa muốn public
+google-services.json
+GoogleService-Info.plist
+
+
+# =========================================================
+# NODE / NESTJS
+# =========================================================
+**/node_modules/
+**/dist/
+**/.nestjs/
+**/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# =========================================================
+# BACKEND LOCAL FILE STORAGE
+# =========================================================
+joblink_backend/uploads/
+joblink_backend/src/generated/prisma/
+
+
+# =========================================================
+# PYTHON / FASTAPI
+# =========================================================
+**/.venv/
+**/venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+
+# =========================================================
+# FLUTTER / DART
+# =========================================================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Android local machine configuration
+**/android/local.properties
+**/android/key.properties
+
+# Android signing
+**/*.jks
+**/*.keystore
+
+# iOS
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/ephemeral/
+
+
+# =========================================================
+# IDE
+# =========================================================
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+# =========================================================
+# TEMP
+# =========================================================
+*.log
+*.tmp
+*.temp
+
+
+# =========================================================
+# JOBLINK LOCAL / TEST FILES
+# =========================================================
+
+# Secrets
+/secrets/
+
+# Postman local workspace data
+/.postman/
+
+# Test / downloaded documents in project root
+/CV_NguyenVanA.pdf
+/admin-view-license.pdf
+/business-license.pdf
+/download-business-license.pdf
+/downloaded-cv.pdf
+/employer-view-cv.pdf
+/test-cv.pdf
+/test.pdf
+/test-image.png
+
+# Postman environments may contain JWT/token
+/postman/*environment*.json
+/postman/*Environment*.json
+
+# Backend uploaded files
+/joblink_backend/uploads/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Node
+**/node_modules/
+**/dist/
+
+# Python
+**/.venv/
+**/__pycache__/
+
+# Android secrets
+**/android/local.properties
+**/android/key.properties
+**/*.jks
+**/*.keystore
+
+# Firebase / Google private credentials
+**/*service-account*.json
+**/*serviceAccount*.json
+**/firebase-adminsdk*.json

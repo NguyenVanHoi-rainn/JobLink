@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "declaration": true,
+    "removeComments": true,
+
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+
+    "target": "ES2023",
+
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    "incremental": true,
+    "skipLibCheck": true,
+
+    "strict": true,
+    "strictPropertyInitialization": false,
+
+    "types": [
+      "node",
+      "jest",
+      "express",
+      "multer"
+    ],
+
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "generated",
+    "jest.config.ts",
+    "prisma.config.ts",
+    "**/*.spec.ts"
+  ]
+}

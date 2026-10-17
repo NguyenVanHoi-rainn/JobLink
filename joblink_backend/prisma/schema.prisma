@@ -1,0 +1,603 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ======================================================
+// ENUMS
+// ======================================================
+
+enum UserRole {
+  WORKER
+  EMPLOYER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  LOCKED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum JobStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  HIDDEN
+}
+
+enum ApplicationStatus {
+  APPLIED
+  REVIEWING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ConversationType {
+  PRIVATE
+  APPLICANT_GROUP
+  SELECTED_GROUP
+}
+
+enum ConversationMemberRole {
+  MEMBER
+  OWNER
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  CANCELLED
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  REJECTED
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+// ======================================================
+// 1. USERS
+// ======================================================
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique @db.VarChar(255)
+  passwordHash String?    @map("password_hash") @db.VarChar(255)
+  googleId     String?    @unique @map("google_id") @db.VarChar(255)
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  workerProfile   WorkerProfile?
+  employerProfile EmployerProfile?
+
+  createdConversations Conversation[]       @relation("ConversationCreator")
+  conversationMembers  ConversationMember[]
+  messages             Message[]
+  notifications        Notification[]
+  reports              Report[]
+
+  @@map("users")
+}
+
+// ======================================================
+// 2. WORKER PROFILES
+// ======================================================
+
+model WorkerProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+
+  fullName   String  @map("full_name") @db.VarChar(150)
+  phone      String? @db.VarChar(20)
+  bio        String? @db.Text
+  searchArea String? @map("search_area") @db.VarChar(255)
+
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cvs              CV[]
+  workExperiences  WorkExperience[]
+  availabilities   WorkerAvailability[]
+  workerSkills     WorkerSkill[]
+  workerCategories WorkerCategory[]
+
+  applications    Application[]
+  recommendations JobRecommendation[]
+  savedJobs       SavedJob[]
+
+  @@map("worker_profiles")
+}
+
+// ======================================================
+// 3. EMPLOYER PROFILES
+// ======================================================
+
+model EmployerProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+
+  companyName String @map("company_name") @db.VarChar(255)
+
+  contactName String? @map("contact_name") @db.VarChar(150)
+  phone       String? @db.VarChar(20)
+
+  description String? @db.Text
+  address     String? @db.VarChar(255)
+  logoUrl     String? @map("logo_url") @db.Text
+
+  businessLicense String? @map("business_license") @db.VarChar(255)
+  taxCode         String? @map("tax_code") @db.VarChar(100)
+
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  rejectionReason    String?            @map("rejection_reason") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  jobs Job[]
+
+  @@map("employer_profiles")
+}
+
+// ======================================================
+// 4. CVS
+// ======================================================
+
+model CV {
+  id       String @id @default(uuid()) @db.Uuid
+  workerId String @map("worker_id") @db.Uuid
+
+  fileName String @map("file_name") @db.VarChar(255)
+  fileUrl  String @map("file_url") @db.Text
+
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  applications Application[]
+
+  @@index([workerId])
+  @@map("cvs")
+}
+
+// ======================================================
+// 5. WORK EXPERIENCES
+// ======================================================
+
+model WorkExperience {
+  id       String @id @default(uuid()) @db.Uuid
+  workerId String @map("worker_id") @db.Uuid
+
+  companyName String  @map("company_name") @db.VarChar(255)
+  position    String  @db.VarChar(255)
+  description String? @db.Text
+
+  startDate DateTime  @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+  isCurrent Boolean   @default(false) @map("is_current")
+
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([workerId])
+  @@map("work_experiences")
+}
+
+// ======================================================
+// 6. WORKER AVAILABILITIES
+// ======================================================
+
+model WorkerAvailability {
+  id       String @id @default(uuid()) @db.Uuid
+  workerId String @map("worker_id") @db.Uuid
+
+  dayOfWeek DayOfWeek @map("day_of_week")
+  startTime DateTime  @map("start_time") @db.Time
+  endTime   DateTime  @map("end_time") @db.Time
+
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([workerId])
+  @@map("worker_availabilities")
+}
+
+// ======================================================
+// 7. SKILLS
+// ======================================================
+
+model Skill {
+  id     String  @id @default(uuid()) @db.Uuid
+  name   String  @unique @db.VarChar(150)
+  status Boolean @default(true)
+
+  workerSkills WorkerSkill[]
+  jobSkills    JobSkill[]
+
+  @@map("skills")
+}
+
+// ======================================================
+// 8. WORKER SKILLS
+// ======================================================
+
+model WorkerSkill {
+  workerId String @map("worker_id") @db.Uuid
+  skillId  String @map("skill_id") @db.Uuid
+
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  skill  Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([workerId, skillId])
+  @@map("worker_skills")
+}
+
+// ======================================================
+// 9. CATEGORIES
+// ======================================================
+
+model Category {
+  id     String  @id @default(uuid()) @db.Uuid
+  name   String  @unique @db.VarChar(150)
+  status Boolean @default(true)
+
+  jobs             Job[]
+  workerCategories WorkerCategory[]
+
+  @@map("categories")
+}
+
+// ======================================================
+// 10. WORKER CATEGORIES
+// ======================================================
+
+model WorkerCategory {
+  workerId   String @map("worker_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+
+  worker   WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  category Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([workerId, categoryId])
+  @@map("worker_categories")
+}
+
+// ======================================================
+// 11. JOBS
+// ======================================================
+
+model Job {
+  id         String @id @default(uuid()) @db.Uuid
+  employerId String @map("employer_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+
+  title       String @db.VarChar(255)
+  description String @db.Text
+
+  salary Decimal? @db.Decimal(15, 2)
+
+  location  String   @db.VarChar(255)
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+
+  cvRequired Boolean @default(false) @map("cv_required")
+
+  deadline DateTime?
+
+  status JobStatus @default(DRAFT)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  employer EmployerProfile @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  category Category        @relation(fields: [categoryId], references: [id])
+
+  jobSkills       JobSkill[]
+  applications    Application[]
+  recommendations JobRecommendation[]
+  conversations   Conversation[]
+  savedJobs       SavedJob[]
+
+  @@index([employerId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("jobs")
+}
+
+// ======================================================
+// 12. JOB SKILLS
+// ======================================================
+
+model JobSkill {
+  jobId   String @map("job_id") @db.Uuid
+  skillId String @map("skill_id") @db.Uuid
+
+  job   Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([jobId, skillId])
+  @@map("job_skills")
+}
+
+// ======================================================
+// 13. APPLICATIONS
+// ======================================================
+
+model Application {
+  id       String  @id @default(uuid()) @db.Uuid
+  jobId    String  @map("job_id") @db.Uuid
+  workerId String  @map("worker_id") @db.Uuid
+  cvId     String? @map("cv_id") @db.Uuid
+
+  status ApplicationStatus @default(APPLIED)
+
+  note String? @db.Text
+
+  appliedAt DateTime @default(now()) @map("applied_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  job    Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  cv     CV?           @relation(fields: [cvId], references: [id], onDelete: SetNull)
+
+  candidateMatch  CandidateMatch?
+  workAppointment WorkAppointment?
+
+  @@unique([jobId, workerId])
+  @@index([jobId])
+  @@index([workerId])
+  @@index([status])
+  @@map("applications")
+}
+
+// ======================================================
+// 14. JOB RECOMMENDATIONS
+// ======================================================
+
+model JobRecommendation {
+  id       String @id @default(uuid()) @db.Uuid
+  workerId String @map("worker_id") @db.Uuid
+  jobId    String @map("job_id") @db.Uuid
+
+  score   Decimal @db.Decimal(5, 2)
+  reasons String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  job    Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([workerId, jobId])
+  @@index([workerId])
+  @@index([jobId])
+  @@index([score])
+  @@map("job_recommendations")
+}
+
+// ======================================================
+// 15. CANDIDATE MATCHES
+// ======================================================
+
+model CandidateMatch {
+  id            String @id @default(uuid()) @db.Uuid
+  applicationId String @unique @map("application_id") @db.Uuid
+
+  matchingScore Decimal @map("matching_score") @db.Decimal(5, 2)
+  reasons       String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_matches")
+}
+
+// ======================================================
+// 16. CONVERSATIONS
+// ======================================================
+
+model Conversation {
+  id        String  @id @default(uuid()) @db.Uuid
+  jobId     String? @map("job_id") @db.Uuid
+  createdBy String  @map("created_by") @db.Uuid
+
+  type ConversationType
+
+  name String? @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  job     Job? @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  creator User @relation("ConversationCreator", fields: [createdBy], references: [id])
+
+  members  ConversationMember[]
+  messages Message[]
+
+  @@index([jobId])
+  @@index([createdBy])
+  @@index([type])
+  @@map("conversations")
+}
+
+// ======================================================
+// 17. CONVERSATION MEMBERS
+// ======================================================
+
+model ConversationMember {
+  conversationId String @map("conversation_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+
+  memberRole ConversationMemberRole @default(MEMBER) @map("member_role")
+
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_members")
+}
+
+// ======================================================
+// 18. MESSAGES
+// ======================================================
+
+model Message {
+  id             String  @id @default(uuid()) @db.Uuid
+  conversationId String  @map("conversation_id") @db.Uuid
+  senderId       String  @map("sender_id") @db.Uuid
+  replyToId      String? @map("reply_to_id") @db.Uuid
+
+  content String? @db.Text
+
+  messageType MessageType @default(TEXT) @map("message_type")
+  fileUrl     String?     @map("file_url") @db.Text
+
+  sentAt DateTime @default(now()) @map("sent_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
+
+  replyTo Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies Message[] @relation("MessageReplies")
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([sentAt])
+  @@map("messages")
+}
+
+// ======================================================
+// 19. WORK APPOINTMENTS
+// ======================================================
+
+model WorkAppointment {
+  id            String @id @default(uuid()) @db.Uuid
+  applicationId String @unique @map("application_id") @db.Uuid
+
+  appointmentDate DateTime @map("appointment_date")
+  location        String   @db.VarChar(255)
+  instruction     String?  @db.Text
+
+  status AppointmentStatus @default(PENDING)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentDate])
+  @@map("work_appointments")
+}
+
+// ======================================================
+// 20. SAVED JOBS
+// ======================================================
+
+model SavedJob {
+  workerId String @map("worker_id") @db.Uuid
+  jobId    String @map("job_id") @db.Uuid
+
+  savedAt DateTime @default(now()) @map("saved_at")
+
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  job    Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@id([workerId, jobId])
+  @@map("saved_jobs")
+}
+
+// ======================================================
+// 21. NOTIFICATIONS
+// ======================================================
+
+model Notification {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  title   String @db.VarChar(255)
+  content String @db.Text
+  type    String @db.VarChar(100)
+
+  referenceType String? @map("reference_type") @db.VarChar(100)
+  referenceId   String? @map("reference_id") @db.Uuid
+
+  isRead Boolean @default(false) @map("is_read")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ======================================================
+// 22. REPORTS
+// ======================================================
+
+model Report {
+  id         String @id @default(uuid()) @db.Uuid
+  reporterId String @map("reporter_id") @db.Uuid
+
+  targetType String @map("target_type") @db.VarChar(100)
+  targetId   String @map("target_id") @db.Uuid
+
+  reason      String  @db.VarChar(255)
+  description String? @db.Text
+
+  status ReportStatus @default(OPEN)
+
+  createdAt  DateTime  @default(now()) @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  reporter User @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([reporterId])
+  @@index([targetType, targetId])
+  @@index([status])
+  @@map("reports")
+}
