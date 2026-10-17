@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../models/job.dart';
 import '../../services/job_service.dart';
+import 'job_detail_screen.dart';
+import 'worker_activity_screen.dart';
 
 class WorkerHomeScreen extends StatefulWidget {
   const WorkerHomeScreen({super.key});
@@ -19,7 +21,7 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
   Widget build(BuildContext context) {
     final pages = [
       const _WorkerHomePage(),
-      const _ActivityPage(),
+      const WorkerActivityScreen(),
       const _MessagesPage(),
       const _ProfilePage(),
     ];
@@ -200,20 +202,39 @@ class _WorkerHomePageState
                           padding: const EdgeInsets.only(
                             bottom: 12,
                           ),
-                          child: _AiJobCard(
-                            title: job.title,
-                            company:
-                            job.employerName ?? 'Nhà tuyển dụng',
-                            location:
-                            job.address ?? 'Chưa cập nhật địa điểm',
-                            salary: job.salaryText,
-                            match: recommendation.percentage,
-                            tags: [
-                              if (job.cvRequired) 'Yêu cầu CV',
-                              if (recommendation.reasons.isNotEmpty)
-                                recommendation.reasons.first,
-                            ],
-                          ),
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        JobDetailScreen(
+                                          job: job,
+                                        ),
+                                  ),
+                                );
+                              },
+                              child: _AiJobCard(
+                                title: job.title,
+                                company:
+                                job.employerName ??
+                                    'Nhà tuyển dụng',
+                                location:
+                                job.location ??
+                                    'Chưa cập nhật địa điểm',
+                                salary: job.salaryText,
+                                match:
+                                recommendation.percentage,
+                                tags: [
+                                  if (job.cvRequired)
+                                    'Yêu cầu CV',
+                                  if (recommendation
+                                      .reasons.isNotEmpty)
+                                    recommendation
+                                        .reasons.first,
+                                ],
+                              ),
+                            ),
                         );
                       },
                     ),
@@ -251,16 +272,31 @@ class _WorkerHomePageState
                             padding: const EdgeInsets.only(
                               bottom: 12,
                             ),
-                            child: _JobCard(
-                              title: job.title,
-                              company:
-                              job.employerName ?? 'Nhà tuyển dụng',
-                              location:
-                              job.address ?? 'Chưa cập nhật địa điểm',
-                              salary: job.salaryText,
-                              time: job.cvRequired
-                                  ? 'Yêu cầu CV'
-                                  : 'Không bắt buộc CV',
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        JobDetailScreen(
+                                          job: job,
+                                        ),
+                                  ),
+                                );
+                              },
+                              child: _JobCard(
+                                title: job.title,
+                                company:
+                                job.employerName ??
+                                    'Nhà tuyển dụng',
+                                location:
+                                job.location ??
+                                    'Chưa cập nhật địa điểm',
+                                salary: job.salaryText,
+                                time: job.cvRequired
+                                    ? 'Yêu cầu CV'
+                                    : 'Không bắt buộc CV',
+                              ),
                             ),
                           );
                         },
@@ -934,19 +970,6 @@ class _CategoryData {
   final IconData icon;
 }
 
-class _ActivityPage extends StatelessWidget {
-  const _ActivityPage();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _PlaceholderPage(
-      title: 'Hoạt động',
-      description:
-      'Theo dõi các công việc bạn đã ứng tuyển và lịch làm việc.',
-      icon: Icons.work_history_outlined,
-    );
-  }
-}
 
 class _MessagesPage extends StatelessWidget {
   const _MessagesPage();

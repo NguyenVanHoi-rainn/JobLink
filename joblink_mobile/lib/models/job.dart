@@ -2,53 +2,99 @@ class Job {
   final String id;
   final String title;
   final String? description;
-  final String? address;
-  final double? salaryMin;
-  final double? salaryMax;
+  final double? salary;
+  final String? location;
+  final double? distanceKm;
   final bool cvRequired;
+  final DateTime? deadline;
+  final String? status;
+
   final String? employerName;
+  final String? employerLogoUrl;
+  final String? categoryName;
+
+  final List<String> skills;
 
   const Job({
     required this.id,
     required this.title,
     this.description,
-    this.address,
-    this.salaryMin,
-    this.salaryMax,
+    this.salary,
+    this.location,
+    this.distanceKm,
     this.cvRequired = false,
+    this.deadline,
+    this.status,
     this.employerName,
+    this.employerLogoUrl,
+    this.categoryName,
+    this.skills = const [],
   });
 
   factory Job.fromJson(Map<String, dynamic> json) {
     final employer = json['employer'];
+    final category = json['category'];
+    final jobSkills = json['jobSkills'];
 
     String? employerName;
+    String? employerLogoUrl;
 
     if (employer is Map) {
-      employerName =
-          employer['companyName']?.toString() ??
-              employer['name']?.toString();
+      employerName = employer['companyName']?.toString();
+      employerLogoUrl = employer['logoUrl']?.toString();
     }
 
-    employerName ??=
-        json['companyName']?.toString() ??
-            json['employerName']?.toString();
+    String? categoryName;
+
+    if (category is Map) {
+      categoryName = category['name']?.toString();
+    }
+
+    final skills = <String>[];
+
+    if (jobSkills is List) {
+      for (final item in jobSkills) {
+        if (item is Map) {
+          final skill = item['skill'];
+
+          if (skill is Map) {
+            final name = skill['name']?.toString();
+
+            if (name != null && name.isNotEmpty) {
+              skills.add(name);
+            }
+          }
+        }
+      }
+    }
+
+    DateTime? deadline;
+
+    final rawDeadline = json['deadline'];
+
+    if (rawDeadline != null) {
+      deadline = DateTime.tryParse(
+        rawDeadline.toString(),
+      );
+    }
 
     return Job(
       id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? 'Công việc',
       description: json['description']?.toString(),
-      address:
-      json['address']?.toString() ??
-          json['location']?.toString(),
-      salaryMin: _toDouble(
-        json['salaryMin'] ?? json['minSalary'],
-      ),
-      salaryMax: _toDouble(
-        json['salaryMax'] ?? json['maxSalary'],
-      ),
+      salary: _toDouble(json['salary']),
+      location: json['location']?.toString(),
+      distanceKm: _toDouble(json['distanceKm']),
       cvRequired: json['cvRequired'] == true,
-      employerName: employerName,
+      deadline: deadline,
+      status: json['status']?.toString(),
+      employerName:
+      employerName ??
+          json['companyName']?.toString() ??
+          'Nhà tuyển dụng',
+      employerLogoUrl: employerLogoUrl,
+      categoryName: categoryName,
+      skills: skills,
     );
   }
 
@@ -59,24 +105,37 @@ class Job {
       return value.toDouble();
     }
 
-    return double.tryParse(value.toString());
+    return double.tryParse(
+      value.toString(),
+    );
   }
 
   String get salaryText {
-    if (salaryMin == null && salaryMax == null) {
+    if (salary == null) {
       return 'Thỏa thuận';
     }
 
-    if (salaryMin != null &&
-        salaryMax != null &&
-        salaryMin != salaryMax) {
-      return '${_formatMoney(salaryMin!)} - '
-          '${_formatMoney(salaryMax!)}đ';
+    return '${_formatMoney(salary!)}đ';
+  }
+
+  String get deadlineText {
+    if (deadline == null) {
+      return 'Không giới hạn';
     }
 
-    final salary = salaryMin ?? salaryMax!;
+    final local = deadline!.toLocal();
 
-    return '${_formatMoney(salary)}đ';
+    return '${local.day.toString().padLeft(2, '0')}/'
+        '${local.month.toString().padLeft(2, '0')}/'
+        '${local.year}';
+  }
+
+  String get distanceText {
+    if (distanceKm == null) {
+      return location ?? 'Chưa cập nhật địa điểm';
+    }
+
+    return '${distanceKm!.toStringAsFixed(1)} km';
   }
 
   static String _formatMoney(double value) {
@@ -109,35 +168,42 @@ class JobRecommendation {
   factory JobRecommendation.fromJson(
       Map<String, dynamic> json,
       ) {
-    final jobData = json['job'];
+    final rawJob = json['job'];
 
     final Map<String, dynamic> jobJson;
 
-    if (jobData is Map) {
-      jobJson = Map<String, dynamic>.from(jobData);
+    if (rawJob is Map) {
+      jobJson = Map<String, dynamic>.from(
+        rawJob,
+      );
     } else {
-      // Phòng trường hợp backend trả thông tin job
-      // cùng cấp với score.
-      jobJson = Map<String, dynamic>.from(json);
+      jobJson = Map<String, dynamic>.from(
+        json,
+      );
     }
 
     final rawReasons = json['reasons'];
 
-    List<String> reasons = [];
+    final reasons = <String>[];
 
     if (rawReasons is List) {
-      reasons = rawReasons
-          .map((e) => e.toString())
-          .toList();
+      for (final reason in rawReasons) {
+        reasons.add(
+          reason.toString(),
+        );
+      }
     } else if (rawReasons != null) {
-      reasons = [
+      reasons.add(
         rawReasons.toString(),
-      ];
+      );
     }
 
     return JobRecommendation(
       job: Job.fromJson(jobJson),
-      score: Job._toDouble(json['score']) ?? 0,
+      score: Job._toDouble(
+        json['score'],
+      ) ??
+          0,
       reasons: reasons,
     );
   }
