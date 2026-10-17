@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../models/job.dart';
+import '../../services/job_service.dart';
 
 class WorkerHomeScreen extends StatefulWidget {
   const WorkerHomeScreen({super.key});
@@ -76,10 +78,66 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
   }
 }
 
-class _WorkerHomePage extends StatelessWidget {
+class _WorkerHomePage extends StatefulWidget {
   const _WorkerHomePage();
 
-  static const Color primaryColor = Color(0xFF2563EB);
+  @override
+  State<_WorkerHomePage> createState() =>
+      _WorkerHomePageState();
+}
+
+class _WorkerHomePageState
+    extends State<_WorkerHomePage> {
+  static const Color primaryColor =
+  Color(0xFF2563EB);
+
+  final JobService _jobService = JobService();
+
+  List<Job> _jobs = [];
+  List<JobRecommendation> _recommendations = [];
+
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final results = await Future.wait([
+        _jobService.getJobs(),
+        _jobService.getRecommendations(),
+      ]);
+
+      if (!mounted) return;
+
+      setState(() {
+        _jobs = results[0] as List<Job>;
+        _recommendations =
+        results[1] as List<JobRecommendation>;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _error = 'Không thể tải dữ liệu việc làm';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,31 +182,43 @@ class _WorkerHomePage extends StatelessWidget {
 
                   const SizedBox(height: 14),
 
-                  const _AiJobCard(
-                    title: 'Nhân viên phục vụ ca tối',
-                    company: 'The Coffee House',
-                    location: 'Thủ Dầu Một',
-                    salary: '25.000 - 30.000đ/giờ',
-                    match: 92,
-                    tags: [
-                      'Phục vụ',
-                      'Ca tối',
-                    ],
-                  ),
+                  if (_loading)
+                    const _LoadingBox()
+                  else if (_recommendations.isEmpty)
+                    const _EmptyBox(
+                      icon: Icons.auto_awesome_rounded,
+                      title: 'Chưa có gợi ý phù hợp',
+                      description:
+                      'Hoàn thiện kỹ năng và hồ sơ để AI gợi ý công việc tốt hơn.',
+                    )
+                  else
+                    ..._recommendations.take(5).map(
+                          (recommendation) {
+                        final job = recommendation.job;
 
-                  const SizedBox(height: 12),
+                        return Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: 12,
+                          ),
+                          child: _AiJobCard(
+                            title: job.title,
+                            company:
+                            job.employerName ?? 'Nhà tuyển dụng',
+                            location:
+                            job.address ?? 'Chưa cập nhật địa điểm',
+                            salary: job.salaryText,
+                            match: recommendation.percentage,
+                            tags: [
+                              if (job.cvRequired) 'Yêu cầu CV',
+                              if (recommendation.reasons.isNotEmpty)
+                                recommendation.reasons.first,
+                            ],
+                          ),
+                        );
+                      },
+                    ),
 
-                  const _AiJobCard(
-                    title: 'Nhân viên bán hàng Part-time',
-                    company: 'Ministop',
-                    location: 'Bình Dương',
-                    salary: '28.000đ/giờ',
-                    match: 87,
-                    tags: [
-                      'Bán hàng',
-                      'Giao tiếp',
-                    ],
-                  ),
+                  const SizedBox(height: 28),
 
                   const SizedBox(height: 28),
 
@@ -160,33 +230,41 @@ class _WorkerHomePage extends StatelessWidget {
 
                   const SizedBox(height: 14),
 
-                  const _JobCard(
-                    title: 'Nhân viên pha chế',
-                    company: 'Highlands Coffee',
-                    location: '2.1 km',
-                    salary: '30.000đ/giờ',
-                    time: '17:00 - 22:00',
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  const _JobCard(
-                    title: 'Nhân viên phục vụ',
-                    company: 'Katinat',
-                    location: '3.4 km',
-                    salary: '25.000đ/giờ',
-                    time: '18:00 - 23:00',
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  const _JobCard(
-                    title: 'Cộng tác viên sự kiện',
-                    company: 'Event Media',
-                    location: '4.2 km',
-                    salary: '300.000đ/ca',
-                    time: 'Thứ 7 - Chủ nhật',
-                  ),
+                  if (_loading)
+                    const _LoadingBox()
+                  else if (_error != null)
+                    _ErrorBox(
+                      message: _error!,
+                      onRetry: _loadData,
+                    )
+                  else if (_jobs.isEmpty)
+                      const _EmptyBox(
+                        icon: Icons.work_outline_rounded,
+                        title: 'Chưa có việc làm',
+                        description:
+                        'Hiện chưa có công việc phù hợp để hiển thị.',
+                      )
+                    else
+                      ..._jobs.take(10).map(
+                            (job) {
+                          return Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: 12,
+                            ),
+                            child: _JobCard(
+                              title: job.title,
+                              company:
+                              job.employerName ?? 'Nhà tuyển dụng',
+                              location:
+                              job.address ?? 'Chưa cập nhật địa điểm',
+                              salary: job.salaryText,
+                              time: job.cvRequired
+                                  ? 'Yêu cầu CV'
+                                  : 'Không bắt buộc CV',
+                            ),
+                          );
+                        },
+                      ),
 
                   const SizedBox(height: 30),
                 ],
@@ -957,6 +1035,120 @@ class _PlaceholderPage extends StatelessWidget {
             const Spacer(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _LoadingBox extends StatelessWidget {
+  const _LoadingBox();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(30),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+}
+
+class _EmptyBox extends StatelessWidget {
+  const _EmptyBox({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            size: 38,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            description,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorBox extends StatelessWidget {
+  const _ErrorBox({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 40,
+            color: Colors.redAccent,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(
+              Icons.refresh_rounded,
+            ),
+            label: const Text(
+              'Thử lại',
+            ),
+          ),
+        ],
       ),
     );
   }
