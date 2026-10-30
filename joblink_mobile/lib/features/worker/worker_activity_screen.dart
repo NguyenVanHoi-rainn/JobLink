@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/application.dart';
 import '../../services/application_service.dart';
+import 'worker_application_detail_screen.dart';
 
 class WorkerActivityScreen
     extends StatefulWidget {
@@ -156,10 +157,34 @@ class _WorkerActivityScreenState
                     ),
                     itemBuilder:
                         (context, index) {
-                      return _ApplicationCard(
-                        application:
-                        _applications[
-                        index],
+                      return GestureDetector(
+                        behavior:
+                        HitTestBehavior.opaque,
+                        onTap: () async {
+                          await Navigator.of(
+                            context,
+                          ).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  WorkerApplicationDetailScreen(
+                                    applicationId:
+                                    _applications[
+                                    index
+                                    ].id,
+                                  ),
+                            ),
+                          );
+
+                          if (mounted) {
+                            _loadApplications();
+                          }
+                        },
+                        child: _ApplicationCard(
+                          application:
+                          _applications[
+                          index
+                          ],
+                        ),
                       );
                     },
                   ),

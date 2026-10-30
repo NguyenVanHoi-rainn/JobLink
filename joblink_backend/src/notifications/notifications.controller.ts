@@ -1,15 +1,19 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 
 import { NotificationsService } from './notifications.service.js';
 
+import { DeviceTokenDto } from './dto/device-token.dto.js';
 import { NotificationQueryDto } from './dto/notification-query.dto.js';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -25,6 +29,36 @@ export class NotificationsController {
     private readonly notificationsService:
       NotificationsService,
   ) {}
+
+  @Post('device-token')
+  registerDeviceToken(
+    @CurrentUser()
+    user: any,
+
+    @Body()
+    dto: DeviceTokenDto,
+  ) {
+    return this.notificationsService.registerDeviceToken(
+      user.sub,
+      dto.token,
+      dto.platform ??
+        'android',
+    );
+  }
+
+  @Delete('device-token')
+  removeDeviceToken(
+    @CurrentUser()
+    user: any,
+
+    @Body()
+    dto: DeviceTokenDto,
+  ) {
+    return this.notificationsService.removeDeviceToken(
+      user.sub,
+      dto.token,
+    );
+  }
 
   @Get()
   getMyNotifications(
@@ -61,6 +95,7 @@ export class NotificationsController {
       user.sub,
     );
   }
+
 
   @Get(':id')
   getNotificationById(

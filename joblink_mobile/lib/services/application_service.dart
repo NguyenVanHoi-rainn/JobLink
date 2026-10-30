@@ -6,8 +6,7 @@ import '../models/application.dart';
 class ApplicationService {
   final Dio _dio = ApiClient.dio;
 
-  Future<List<JobApplication>>
-  getMyApplications() async {
+  Future<List<JobApplication>> getMyApplications() async {
     final response = await _dio.get(
       '/applications/me',
     );
@@ -19,18 +18,48 @@ class ApplicationService {
     return list
         .whereType<Map>()
         .map(
-          (item) =>
-          JobApplication.fromJson(
-            Map<String, dynamic>.from(
-              item,
-            ),
-          ),
+          (item) => JobApplication.fromJson(
+        Map<String, dynamic>.from(
+          item,
+        ),
+      ),
     )
         .where(
           (application) =>
       application.id.isNotEmpty,
     )
         .toList();
+  }
+
+  Future<Map<String, dynamic>> getMyApplicationById(
+      String applicationId,
+      ) async {
+    final response = await _dio.get(
+      '/applications/me/$applicationId',
+    );
+
+    final data = response.data;
+
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(
+        data,
+      );
+
+      // Hỗ trợ cả response trực tiếp và response bọc trong "data".
+      final nested = map['data'];
+
+      if (nested is Map) {
+        return Map<String, dynamic>.from(
+          nested,
+        );
+      }
+
+      return map;
+    }
+
+    throw StateError(
+      'Dữ liệu chi tiết đơn ứng tuyển không hợp lệ',
+    );
   }
 
   List<dynamic> _extractList(

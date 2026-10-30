@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
-
+import { FirebaseAdminService } from './firebase-admin.service.js';
 import { NotificationQueryDto } from './dto/notification-query.dto.js';
 
 interface CreateNotificationData {
@@ -21,37 +21,189 @@ interface CreateNotificationData {
 @Injectable()
 export class NotificationsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma:
+      PrismaService,
+
+    private readonly firebaseAdmin:
+      FirebaseAdminService,
   ) {}
 
   async create(
     data: CreateNotificationData,
   ) {
-    return this.prisma.notification.create({
-      data: {
-        userId: data.userId,
+    const notification =
+      await this.prisma.notification.create({
+        data: {
+          userId:
+            data.userId,
 
-        title: data.title,
+          title:
+            data.title,
 
-        content: data.content,
+          content:
+            data.content,
 
-        type: data.type,
+          type:
+            data.type,
 
-        referenceType:
-          data.referenceType ?? null,
+          referenceType:
+            data.referenceType ?? null,
 
-        referenceId:
-          data.referenceId ?? null,
-      },
-    });
+          referenceId:
+            data.referenceId ?? null,
+        },
+      });
+
+    void this.sendPushNotification(
+      notification,
+    );
+
+    return notification;
+  }
+
+  private async sendPushNotification(
+    notification: {
+      id: string;
+      userId: string;
+      title: string;
+      content: string;
+      type: string;
+      referenceType:
+        string | null;
+      referenceId:
+        string | null;
+    },
+  ) {
+    try {
+      const tokenRecords =
+        await this.prisma.pushToken.findMany({
+          where: {
+            userId:
+              notification.userId,
+          },
+
+          select: {
+            token:
+              true,
+          },
+        });
+
+      if (
+        tokenRecords.length === 0
+      ) {
+        return;
+      }
+
+      const result =
+        await this.firebaseAdmin.sendToTokens(
+          tokenRecords.map(
+            (item) =>
+              item.token,
+          ),
+          {
+            title:
+              notification.title,
+
+            body:
+              notification.content,
+
+            data: {
+              notificationId:
+                notification.id,
+
+              type:
+                notification.type,
+
+              referenceType:
+                notification.referenceType ??
+                '',
+
+              referenceId:
+                notification.referenceId ??
+                '',
+            },
+          },
+        );
+
+      if (
+        result.invalidTokens.length >
+        0
+      ) {
+        await this.prisma.pushToken.deleteMany({
+          where: {
+            token: {
+              in:
+                result.invalidTokens,
+            },
+          },
+        });
+      }
+    } catch (error) {
+      console.error(
+        'Push notification failed:',
+        error,
+      );
+    }
+  }
+
+  async registerDeviceToken(
+    userId: string,
+    token: string,
+    platform = 'android',
+  ) {
+    const savedToken =
+      await this.prisma.pushToken.upsert({
+        where: {
+          token,
+        },
+
+        update: {
+          userId,
+          platform,
+        },
+
+        create: {
+          userId,
+          token,
+          platform,
+        },
+      });
+
+    return {
+      success: true,
+      id:
+        savedToken.id,
+    };
+  }
+
+  async removeDeviceToken(
+    userId: string,
+    token: string,
+  ) {
+    const result =
+      await this.prisma.pushToken.deleteMany({
+        where: {
+          userId,
+          token,
+        },
+      });
+
+    return {
+      success: true,
+      removedCount:
+        result.count,
+    };
   }
 
   async getMyNotifications(
     userId: string,
     query: NotificationQueryDto,
   ) {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const page =
+      query.page ?? 1;
+
+    const limit =
+      query.limit ?? 20;
 
     const skip =
       (page - 1) * limit;
@@ -59,9 +211,11 @@ export class NotificationsService {
     const where = {
       userId,
 
-      ...(query.isRead !== undefined && {
+      ...(query.isRead !==
+        undefined && {
         isRead:
-          query.isRead === 'true',
+          query.isRead ===
+          'true',
       }),
 
       ...(query.type && {
@@ -79,11 +233,13 @@ export class NotificationsService {
           where,
 
           orderBy: {
-            createdAt: 'desc',
+            createdAt:
+              'desc',
           },
 
           skip,
-          take: limit,
+          take:
+            limit,
         }),
 
         this.prisma.notification.count({
@@ -114,12 +270,14 @@ export class NotificationsService {
       await this.prisma.notification.count({
         where: {
           userId,
-          isRead: false,
+          isRead:
+            false,
         },
       });
 
     return {
-      unreadCount: count,
+      unreadCount:
+        count,
     };
   }
 
@@ -130,7 +288,8 @@ export class NotificationsService {
     const notification =
       await this.prisma.notification.findUnique({
         where: {
-          id: notificationId,
+          id:
+            notificationId,
         },
       });
 
@@ -163,11 +322,13 @@ export class NotificationsService {
 
     return this.prisma.notification.update({
       where: {
-        id: notificationId,
+        id:
+          notificationId,
       },
 
       data: {
-        isRead: true,
+        isRead:
+          true,
       },
     });
   }
@@ -179,11 +340,13 @@ export class NotificationsService {
       await this.prisma.notification.updateMany({
         where: {
           userId,
-          isRead: false,
+          isRead:
+            false,
         },
 
         data: {
-          isRead: true,
+          isRead:
+            true,
         },
       });
 

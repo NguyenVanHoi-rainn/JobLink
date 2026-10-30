@@ -1,16 +1,31 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
+import 'core/navigation/app_navigator.dart';
 import 'core/network/api_client.dart';
 import 'features/auth/login_screen.dart';
 import 'features/employer/employer_home_screen.dart';
 import 'features/worker/worker_home_screen.dart';
+import 'firebase_options.dart';
 import 'services/auth_service.dart';
+import 'services/push_notification_service.dart';
 
-void main() {
-  WidgetsFlutterBinding
-      .ensureInitialized();
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  FirebaseMessaging.onBackgroundMessage(
+    firebaseMessagingBackgroundHandler,
+  );
 
   ApiClient.initialize();
+
+  await PushNotificationService.instance
+      .initialize();
 
   runApp(
     const JobLinkApp(),
@@ -28,6 +43,8 @@ class JobLinkApp
       BuildContext context,
       ) {
     return MaterialApp(
+      navigatorKey:
+      appNavigatorKey,
       title: 'JobLink',
       debugShowCheckedModeBanner:
       false,
@@ -88,6 +105,15 @@ class _AuthGateState
           return const LoginScreen();
         }
 
+        WidgetsBinding.instance
+            .addPostFrameCallback(
+              (_) {
+            PushNotificationService
+                .instance
+                .handlePendingNavigation();
+          },
+        );
+
         if (
         user.role ==
             'WORKER') {
@@ -109,11 +135,19 @@ class _AuthGateState
   _checkSession() async {
     try {
       if (
-      !await _authService.hasToken()) {
+      !await _authService
+          .hasToken()) {
         return null;
       }
 
-      return await _authService.getMe();
+      final user =
+      await _authService.getMe();
+
+      await PushNotificationService
+          .instance
+          .syncToken();
+
+      return user;
     } catch (_) {
       await _authService.logout();
       return null;

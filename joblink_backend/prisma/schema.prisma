@@ -36,6 +36,22 @@ enum JobStatus {
   HIDDEN
 }
 
+enum SalaryType {
+  HOURLY
+  DAILY
+  SHIFT
+  MONTHLY
+  FIXED
+}
+
+enum ShiftType {
+  MORNING
+  AFTERNOON
+  EVENING
+  NIGHT
+  FLEXIBLE
+}
+
 enum ApplicationStatus {
   APPLIED
   REVIEWING
@@ -107,6 +123,7 @@ model User {
   conversationMembers  ConversationMember[]
   messages             Message[]
   notifications        Notification[]
+  pushTokens           PushToken[]
   reports              Report[]
 
   @@map("users")
@@ -120,10 +137,14 @@ model WorkerProfile {
   id     String @id @default(uuid()) @db.Uuid
   userId String @unique @map("user_id") @db.Uuid
 
-  fullName   String  @map("full_name") @db.VarChar(150)
+  fullName   String? @map("full_name") @db.VarChar(150)
   phone      String? @db.VarChar(20)
   bio        String? @db.Text
   searchArea String? @map("search_area") @db.VarChar(255)
+
+  preferredMinSalary  Decimal?    @map("preferred_min_salary") @db.Decimal(15, 2)
+  preferredSalaryType SalaryType? @map("preferred_salary_type")
+  maxDistanceKm       Int?        @map("max_distance_km")
 
   latitude  Decimal? @db.Decimal(10, 7)
   longitude Decimal? @db.Decimal(10, 7)
@@ -313,13 +334,48 @@ model Job {
   title       String @db.VarChar(255)
   description String @db.Text
 
-  salary Decimal? @db.Decimal(15, 2)
+  // ======================================================
+  // SALARY
+  // ======================================================
+
+  salary     Decimal?   @db.Decimal(15, 2)
+  salaryType SalaryType @default(HOURLY) @map("salary_type")
+
+  // ======================================================
+  // LOCATION
+  // ======================================================
 
   location  String   @db.VarChar(255)
   latitude  Decimal? @db.Decimal(10, 7)
   longitude Decimal? @db.Decimal(10, 7)
 
+  // ======================================================
+  // WORK SCHEDULE
+  // ======================================================
+
+  shiftType ShiftType @default(FLEXIBLE) @map("shift_type")
+
+  startTime DateTime? @map("start_time") @db.Time
+  endTime   DateTime? @map("end_time") @db.Time
+
+  workDays DayOfWeek[] @default([]) @map("work_days")
+
+  // ======================================================
+  // URGENT HIRING
+  // ======================================================
+
+  urgent      Boolean   @default(false)
+  urgentUntil DateTime? @map("urgent_until")
+
+  // ======================================================
+  // CV
+  // ======================================================
+
   cvRequired Boolean @default(false) @map("cv_required")
+
+  // ======================================================
+  // DEADLINE / STATUS
+  // ======================================================
 
   deadline DateTime?
 
@@ -327,6 +383,10 @@ model Job {
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+
+  // ======================================================
+  // RELATIONS
+  // ======================================================
 
   employer EmployerProfile @relation(fields: [employerId], references: [id], onDelete: Cascade)
   category Category        @relation(fields: [categoryId], references: [id])
@@ -337,10 +397,17 @@ model Job {
   conversations   Conversation[]
   savedJobs       SavedJob[]
 
+  // ======================================================
+  // INDEXES
+  // ======================================================
+
   @@index([employerId])
   @@index([categoryId])
   @@index([status])
   @@index([createdAt])
+  @@index([salaryType])
+  @@index([shiftType])
+  @@index([urgent])
   @@map("jobs")
 }
 
@@ -469,7 +536,8 @@ model ConversationMember {
 
   memberRole ConversationMemberRole @default(MEMBER) @map("member_role")
 
-  joinedAt DateTime @default(now()) @map("joined_at")
+  joinedAt   DateTime @default(now()) @map("joined_at")
+  lastReadAt DateTime @default(now()) @map("last_read_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -505,6 +573,7 @@ model Message {
   @@index([conversationId])
   @@index([senderId])
   @@index([sentAt])
+  @@index([conversationId, sentAt])
   @@map("messages")
 }
 
@@ -600,4 +669,19 @@ model Report {
   @@index([targetType, targetId])
   @@index([status])
   @@map("reports")
+}
+
+model PushToken {
+  id       String @id @default(uuid()) @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  token    String @unique @db.VarChar(512)
+  platform String @default("android") @db.VarChar(20)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
 }

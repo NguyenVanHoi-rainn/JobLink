@@ -1,10 +1,13 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 
-import { PrismaService } from '../prisma/prisma.service.js';
+import {
+  PrismaService,
+} from '../prisma/prisma.service.js';
 
 interface AiRecommendation {
   jobId: string;
@@ -19,12 +22,21 @@ interface AiRecommendationResponse {
 @Injectable()
 export class JobRecommendationsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma:
+      PrismaService,
   ) {}
+
+  // =====================================================
+  // GET JOB RECOMMENDATIONS
+  // =====================================================
 
   async getRecommendations(
     userId: string,
   ) {
+    // ===================================================
+    // WORKER PROFILE
+    // ===================================================
+
     const worker =
       await this.prisma.workerProfile.findUnique({
         where: {
@@ -32,21 +44,22 @@ export class JobRecommendationsService {
         },
 
         include: {
-        workerSkills: {
+          workerSkills: {
             include: {
-            skill: true,
+              skill: true,
             },
-        },
+          },
 
-        workerCategories: {
+          workerCategories: {
             include: {
-            category: true,
+              category: true,
             },
-        },
+          },
 
-        workExperiences: true,
-        },
+          availabilities: true,
 
+          workExperiences: true,
+        },
       });
 
     if (!worker) {
@@ -55,32 +68,152 @@ export class JobRecommendationsService {
       );
     }
 
+    // ===================================================
+    // AI READINESS
+    //
+    // REQUIRED:
+    // - SKILLS
+    // - CATEGORIES
+    // - AVAILABILITY
+    //
+    // OPTIONAL:
+    // - LOCATION
+    // - SALARY
+    // ===================================================
+
+    const missingRequiredFields:
+      string[] = [];
+
+    if (
+      worker.workerSkills.length ===
+      0
+    ) {
+      missingRequiredFields.push(
+        'SKILLS',
+      );
+    }
+
+    if (
+      worker.workerCategories.length ===
+      0
+    ) {
+      missingRequiredFields.push(
+        'CATEGORIES',
+      );
+    }
+
+    if (
+      worker.availabilities.length ===
+      0
+    ) {
+      missingRequiredFields.push(
+        'AVAILABILITY',
+      );
+    }
+
+    if (
+      missingRequiredFields.length >
+      0
+    ) {
+      throw new BadRequestException(
+        `Hồ sơ AI chưa sẵn sàng. Thiếu: ${missingRequiredFields.join(
+          ', ',
+        )}`,
+      );
+    }
+
+    // ===================================================
+    // CURRENT ACTIVE JOBS
+    // ===================================================
+
+    const now =
+      new Date();
+
     const jobs =
       await this.prisma.job.findMany({
         where: {
-          status: 'PUBLISHED',
+          status:
+            'PUBLISHED',
 
-          deadline: {
-            gte: new Date(),
-          },
+          OR: [
+            {
+              deadline:
+                null,
+            },
+
+            {
+              deadline: {
+                gt:
+                  now,
+              },
+            },
+          ],
         },
 
         include: {
-          category: true,
+          category:
+            true,
 
           jobSkills: {
             include: {
-              skill: true,
+              skill:
+                true,
             },
           },
         },
       });
 
-    if (jobs.length === 0) {
+    // ===================================================
+    // NO JOB
+    // ===================================================
+
+    if (
+      jobs.length ===
+      0
+    ) {
+      await this.prisma
+        .jobRecommendation
+        .deleteMany({
+          where: {
+            workerId:
+              worker.id,
+          },
+        });
+
       return [];
     }
 
+    // ===================================================
+    // WORKER AVAILABILITY PAYLOAD
+    // ===================================================
+
+    const workerAvailabilities =
+      worker.availabilities.map(
+        (item) => ({
+          dayOfWeek:
+            item.dayOfWeek,
+
+          startTime:
+            this.formatTime(
+              item.startTime,
+            ),
+
+          endTime:
+            this.formatTime(
+              item.endTime,
+            ),
+        }),
+      );
+
+    // ===================================================
+    // AI PAYLOAD
+    // ===================================================
+
     const payload = {
+      // ===============================================
+      // WORKER CORE PROFILE
+      // ===============================================
+
       workerSkills:
         worker.workerSkills.map(
           (item) =>
@@ -93,21 +226,52 @@ export class JobRecommendationsService {
             item.category.name,
         ),
 
-      // Không phụ thuộc tên field bên trong WorkExperience.
-        workerExperienceText:
+      workerAvailabilities,
+
+      workerExperienceText:
         JSON.stringify(
-            worker.workExperiences,
+          worker.workExperiences,
         ),
 
+      // ===============================================
+      // OPTIONAL LOCATION
+      // ===============================================
+
       workerLatitude:
-        worker.latitude !== null
-          ? Number(worker.latitude)
+        worker.latitude !==
+        null
+          ? Number(
+              worker.latitude,
+            )
           : null,
 
       workerLongitude:
-        worker.longitude !== null
-          ? Number(worker.longitude)
+        worker.longitude !==
+        null
+          ? Number(
+              worker.longitude,
+            )
           : null,
+
+      // ===============================================
+      // OPTIONAL SALARY
+      // ===============================================
+
+      workerPreferredMinSalary:
+        worker.preferredMinSalary !==
+        null
+          ? Number(
+              worker.preferredMinSalary,
+            )
+          : null,
+
+      workerPreferredSalaryType:
+        worker.preferredSalaryType ??
+        null,
+
+      // ===============================================
+      // JOBS
+      // ===============================================
 
       jobs:
         jobs.map(
@@ -131,31 +295,94 @@ export class JobRecommendationsService {
                   item.skill.name,
               ),
 
+            // =========================================
+            // JOB LOCATION
+            // =========================================
+
             latitude:
-              job.latitude !== null
-                ? Number(job.latitude)
+              job.latitude !==
+              null
+                ? Number(
+                    job.latitude,
+                  )
                 : null,
 
             longitude:
-              job.longitude !== null
-                ? Number(job.longitude)
+              job.longitude !==
+              null
+                ? Number(
+                    job.longitude,
+                  )
                 : null,
+
+            // =========================================
+            // JOB SALARY
+            // =========================================
+
+            salary:
+              job.salary !==
+              null
+                ? Number(
+                    job.salary,
+                  )
+                : null,
+
+            salaryType:
+              job.salaryType ??
+              null,
+
+            // =========================================
+            // JOB SCHEDULE
+            // =========================================
+
+            shiftType:
+              job.shiftType ??
+              null,
+
+            startTime:
+              job.startTime
+                ? this.formatTime(
+                    job.startTime,
+                  )
+                : null,
+
+            endTime:
+              job.endTime
+                ? this.formatTime(
+                    job.endTime,
+                  )
+                : null,
+
+            workDays:
+              job.workDays ??
+              [],
           }),
         ),
     };
 
+    // ===================================================
+    // AI SERVICE URL
+    // ===================================================
+
     const aiUrl =
-      process.env.AI_SERVICE_URL ??
+      process.env
+        .AI_SERVICE_URL ??
       'http://127.0.0.1:8000';
 
-    let response: Response;
+    let response:
+      Response;
+
+    // ===================================================
+    // CALL FASTAPI
+    // ===================================================
 
     try {
       response =
         await fetch(
           `${aiUrl}/job-recommendations`,
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
@@ -168,13 +395,24 @@ export class JobRecommendationsService {
               ),
           },
         );
-    } catch {
+    } catch (error) {
+      console.error(
+        'AI Recommendation connection error:',
+        error,
+      );
+
       throw new ServiceUnavailableException(
         'Không thể kết nối AI Service',
       );
     }
 
-    if (!response.ok) {
+    // ===================================================
+    // AI ERROR
+    // ===================================================
+
+    if (
+      !response.ok
+    ) {
       const errorText =
         await response.text();
 
@@ -188,142 +426,361 @@ export class JobRecommendationsService {
       );
     }
 
-    const result =
-    (await response.json()) as AiRecommendationResponse;
+    // ===================================================
+    // AI RESPONSE
+    // ===================================================
 
-    // Xóa recommendation cũ của
-    // các Job không còn nằm trong tập hiện tại.
+    let result:
+      AiRecommendationResponse;
+
+    try {
+      result =
+        (
+          await response.json()
+        ) as AiRecommendationResponse;
+    } catch {
+      throw new ServiceUnavailableException(
+        'AI Service trả về dữ liệu không hợp lệ',
+      );
+    }
+
+    const rawRecommendations =
+      Array.isArray(
+        result.recommendations,
+      )
+        ? result.recommendations
+        : [];
+
+    // ===================================================
+    // VALID CURRENT JOB IDS
+    // ===================================================
+
     const currentJobIds =
-      jobs.map(
-        (job) => job.id,
+      new Set(
+        jobs.map(
+          (job) =>
+            job.id,
+        ),
       );
 
-    await this.prisma.jobRecommendation.deleteMany({
-      where: {
-        workerId:
-          worker.id,
+    // ===================================================
+    // NORMALIZE AI RESULT
+    //
+    // Python trả score từ 0 -> 100.
+    // KHÔNG clamp 0 -> 1.
+    // ===================================================
 
-        jobId: {
-          notIn:
-            currentJobIds,
-        },
-      },
-    });
+    const normalizedMap =
+      new Map<
+        string,
+        {
+          jobId: string;
+          score: number;
+          reasons: string[];
+        }
+      >();
 
-    // Lưu / cập nhật điểm AI.
     for (
       const recommendation
-      of result.recommendations
+      of rawRecommendations
     ) {
-      await this.prisma.jobRecommendation.upsert({
-        where: {
-          workerId_jobId: {
+      // AI không được quyền tạo jobId
+      // không nằm trong tập job NestJS gửi.
+      if (
+        !currentJobIds.has(
+          recommendation.jobId,
+        )
+      ) {
+        continue;
+      }
+
+      const rawScore =
+        Number(
+          recommendation.score,
+        );
+
+      const score =
+        Number.isFinite(
+          rawScore,
+        )
+          ? Math.max(
+              0,
+              Math.min(
+                100,
+                rawScore,
+              ),
+            )
+          : 0;
+
+      const reasons =
+        Array.isArray(
+          recommendation.reasons,
+        )
+          ? recommendation
+              .reasons
+              .map(
+                (reason) =>
+                  String(
+                    reason,
+                  ).trim(),
+              )
+              .filter(
+                (reason) =>
+                  reason.length >
+                  0,
+              )
+          : [];
+
+      // Nếu AI vô tình trả trùng jobId,
+      // lấy bản có score cao nhất.
+      const existing =
+        normalizedMap.get(
+          recommendation.jobId,
+        );
+
+      if (
+        !existing ||
+        score >
+          existing.score
+      ) {
+        normalizedMap.set(
+          recommendation.jobId,
+          {
+            jobId:
+              recommendation.jobId,
+
+            score,
+
+            reasons,
+          },
+        );
+      }
+    }
+
+    const normalizedRecommendations =
+      [
+        ...normalizedMap.values(),
+      ];
+
+    // ===================================================
+    // SAVE AI RESULT
+    //
+    // Mỗi lần AI chạy thành công:
+    // xóa recommendation cũ và ghi bộ mới.
+    // ===================================================
+
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.jobRecommendation
+          .deleteMany({
+            where: {
+              workerId:
+                worker.id,
+            },
+          });
+
+        if (
+          normalizedRecommendations
+            .length >
+          0
+        ) {
+          await tx.jobRecommendation
+            .createMany({
+              data:
+                normalizedRecommendations
+                  .map(
+                    (
+                      recommendation,
+                    ) => ({
+                      workerId:
+                        worker.id,
+
+                      jobId:
+                        recommendation
+                          .jobId,
+
+                      score:
+                        recommendation
+                          .score,
+
+                      reasons:
+                        JSON.stringify(
+                          recommendation
+                            .reasons,
+                        ),
+                    }),
+                  ),
+            });
+        }
+      },
+    );
+
+    // ===================================================
+    // LOAD SAVED RECOMMENDATIONS
+    // ===================================================
+
+    const recommendations =
+      await this.prisma
+        .jobRecommendation
+        .findMany({
+          where: {
             workerId:
               worker.id,
 
-            jobId:
-              recommendation.jobId,
-          },
-        },
+            job: {
+              status:
+                'PUBLISHED',
 
-        update: {
-          score:
-            recommendation.score,
-
-          reasons:
-            JSON.stringify(
-              recommendation.reasons,
-            ),
-
-          createdAt:
-            new Date(),
-        },
-
-        create: {
-          workerId:
-            worker.id,
-
-          jobId:
-            recommendation.jobId,
-
-          score:
-            recommendation.score,
-
-          reasons:
-            JSON.stringify(
-              recommendation.reasons,
-            ),
-        },
-      });
-    }
-
-    // Trả kết quả từ DB,
-    // sắp xếp điểm cao xuống thấp.
-    const recommendations =
-      await this.prisma.jobRecommendation.findMany({
-        where: {
-          workerId:
-            worker.id,
-
-          job: {
-            status:
-              'PUBLISHED',
-          },
-        },
-
-        include: {
-          job: {
-            include: {
-              category: true,
-
-              employer: {
-                include: {
-                  user: true,
+              OR: [
+                {
+                  deadline:
+                    null,
                 },
-              },
 
-              jobSkills: {
-                include: {
-                  skill: true,
+                {
+                  deadline: {
+                    gt:
+                      new Date(),
+                  },
+                },
+              ],
+            },
+          },
+
+          include: {
+            job: {
+              include: {
+                category:
+                  true,
+
+                employer: {
+                  include: {
+                    user:
+                      true,
+                  },
+                },
+
+                jobSkills: {
+                  include: {
+                    skill:
+                      true,
+                  },
+                },
+
+                _count: {
+                  select: {
+                    applications:
+                      true,
+                  },
                 },
               },
             },
           },
-        },
 
-        orderBy: {
-          score:
-            'desc',
-        },
-      });
+          orderBy: {
+            score:
+              'desc',
+          },
+        });
+
+    // ===================================================
+    // RESPONSE
+    // ===================================================
 
     return recommendations.map(
-      (item) => ({
-        ...item,
+      (item) => {
+        const job =
+          item.job;
 
-        score:
-          Number(
-            item.score,
-          ),
+        const isUrgent =
+          job.urgent &&
+          (
+            job.urgentUntil ===
+              null ||
+            job.urgentUntil >
+              new Date()
+          );
 
-        reasons:
-          item.reasons
-            ? this.parseReasons(
-                item.reasons,
-              )
-            : [],
+        return {
+          ...item,
 
-        job: {
-          ...item.job,
-
-          salary:
+          score:
             Number(
-              item.job.salary,
+              item.score,
             ),
-        },
-      }),
+
+          reasons:
+            item.reasons
+              ? this.parseReasons(
+                  item.reasons,
+                )
+              : [],
+
+          job: {
+            ...job,
+
+            salary:
+              job.salary ===
+              null
+                ? null
+                : Number(
+                    job.salary,
+                  ),
+
+            latitude:
+              job.latitude ===
+              null
+                ? null
+                : Number(
+                    job.latitude,
+                  ),
+
+            longitude:
+              job.longitude ===
+              null
+                ? null
+                : Number(
+                    job.longitude,
+                  ),
+
+            isUrgent,
+          },
+        };
+      },
     );
   }
+
+  // =====================================================
+  // FORMAT DATABASE TIME
+  // =====================================================
+
+  private formatTime(
+    value: Date,
+  ) {
+    const hours =
+      value
+        .getUTCHours()
+        .toString()
+        .padStart(
+          2,
+          '0',
+        );
+
+    const minutes =
+      value
+        .getUTCMinutes()
+        .toString()
+        .padStart(
+          2,
+          '0',
+        );
+
+    return `${hours}:${minutes}`;
+  }
+
+  // =====================================================
+  // PARSE AI REASONS
+  // =====================================================
 
   private parseReasons(
     reasons: string,
@@ -334,15 +791,36 @@ export class JobRecommendationsService {
           reasons,
         );
 
-      return Array.isArray(
-        parsed,
-      )
-        ? parsed
-        : [];
+      if (
+        !Array.isArray(
+          parsed,
+        )
+      ) {
+        return [];
+      }
+
+      return parsed
+        .map(
+          (reason) =>
+            String(
+              reason,
+            ).trim(),
+        )
+        .filter(
+          (reason) =>
+            reason.length >
+            0,
+        );
     } catch {
-      return [
-        reasons,
-      ];
+      const value =
+        reasons.trim();
+
+      return value.length >
+        0
+        ? [
+            value,
+          ]
+        : [];
     }
   }
 }

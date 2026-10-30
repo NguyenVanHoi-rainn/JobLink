@@ -14,11 +14,15 @@ import { NotificationsModule } from './notifications/notifications.module.js';
 import { SavedJobsModule } from './saved-jobs/saved-jobs.module.js';
 import { ReportsModule } from './reports/reports.module.js';
 import { JobRecommendationsModule } from './job-recommendations/job-recommendations.module.js';
+import {
+  WorkerProfilesModule,
+} from './worker-profiles/worker-profiles.module.js';
 
 @Module({
   imports: [
     PrismaModule,
     AuthModule,
+    WorkerProfilesModule,
     ApplicationsModule,
     JobsModule,
     WorkersModule,

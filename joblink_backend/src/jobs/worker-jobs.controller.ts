@@ -7,15 +7,29 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import { JobsService } from './jobs.service.js';
+import {
+  JobsService,
+} from './jobs.service.js';
 
-import { SearchJobsDto } from './dto/search-jobs.dto.js';
+import {
+  SearchJobsDto,
+} from './dto/search-jobs.dto.js';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
-import { RolesGuard } from '../auth/guards/roles.guard.js';
+import {
+  JwtAuthGuard,
+} from '../auth/guards/jwt-auth.guard.js';
 
-import { Roles } from '../auth/decorators/roles.decorator.js';
-import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import {
+  RolesGuard,
+} from '../auth/guards/roles.guard.js';
+
+import {
+  Roles,
+} from '../auth/decorators/roles.decorator.js';
+
+import {
+  CurrentUser,
+} from '../auth/decorators/current-user.decorator.js';
 
 @Controller('jobs')
 @UseGuards(
@@ -25,18 +39,30 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 @Roles('WORKER')
 export class WorkerJobsController {
   constructor(
-    private readonly jobsService: JobsService,
+    private readonly jobsService:
+      JobsService,
   ) {}
 
-  @Get('categories')
+  // =====================================================
+  // META
+  // =====================================================
+
+  @Get('meta/categories')
   getCategories() {
-    return this.jobsService.getActiveCategories();
+    return this.jobsService
+      .getActiveCategories();
   }
 
-  @Get('skills')
+  @Get('meta/skills')
   getSkills() {
-    return this.jobsService.getActiveSkills();
+    return this.jobsService
+      .getActiveSkills();
   }
+
+  // =====================================================
+  // SEARCH / FILTER
+  // GET /api/v1/jobs
+  // =====================================================
 
   @Get()
   searchJobs(
@@ -44,13 +70,17 @@ export class WorkerJobsController {
     user: any,
 
     @Query()
-    dto: SearchJobsDto,
+    query: SearchJobsDto,
   ) {
     return this.jobsService.searchJobs(
       user.sub,
-      dto,
+      query,
     );
   }
+
+  // =====================================================
+  // DETAIL
+  // =====================================================
 
   @Get(':id')
   getJobDetail(
@@ -60,8 +90,9 @@ export class WorkerJobsController {
     )
     id: string,
   ) {
-    return this.jobsService.getPublishedJobById(
-      id,
-    );
+    return this.jobsService
+      .getPublishedJobById(
+        id,
+      );
   }
 }

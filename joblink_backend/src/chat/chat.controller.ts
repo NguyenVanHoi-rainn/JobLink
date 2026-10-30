@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Patch,
   UseGuards,
   BadRequestException,
   UploadedFile,
@@ -27,6 +28,7 @@ import { SendMessageDto,
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { ChatGateway } from './chat.gateway.js';
 
 @Controller('conversations')
 @UseGuards(JwtAuthGuard)
@@ -34,6 +36,9 @@ export class ChatController {
   constructor(
     private readonly chatService:
       ChatService,
+
+    private readonly chatGateway:
+    ChatGateway,
   ) {}
 
   @Post('private')
@@ -93,8 +98,36 @@ export class ChatController {
     );
   }
 
+  @Patch(':id/read')
+  async markConversationRead(
+    @CurrentUser()
+    user: any,
+
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
+    id: string,
+  ) {
+    const result =
+      await this.chatService
+        .markConversationRead(
+          user.sub,
+          id,
+        );
+
+    this.chatGateway
+      .emitConversationRead(
+        id,
+        user.sub,
+        result.lastReadAt,
+      );
+
+    return result;
+  }
+
   @Post(':id/messages')
-  sendMessage(
+  async sendMessage(
     @CurrentUser()
     user: any,
 
@@ -107,77 +140,92 @@ export class ChatController {
     @Body()
     dto: SendMessageDto,
   ) {
-    return this.chatService.sendMessage(
-      user.sub,
-      id,
-      dto,
-    );
-  }
-
-    @Post(':id/files')
-    @UseInterceptors(
-    FileInterceptor('file', {
-        storage: diskStorage({
-        destination: './uploads/chat',
-
-        filename: (
-            req,
-            file,
-            callback,
-        ) => {
-            const uniqueName =
-            `${Date.now()}-${Math.round(
-                Math.random() * 1e9,
-            )}`;
-
-            callback(
-            null,
-            `${uniqueName}${extname(file.originalname)}`,
-            );
-        },
-        }),
-
-        limits: {
-        fileSize: 10 * 1024 * 1024,
-        },
-    }),
-    )
-    async sendFile(
-    @CurrentUser()
-    user: any,
-
-    @Param('id', ParseUUIDPipe)
-    id: string,
-
-    @UploadedFile()
-    file: Express.Multer.File,
-    ) {
-    if (!file) {
-        throw new BadRequestException(
-        'Vui lòng chọn file',
-        );
-    }
-
-    const imageTypes = [
-        'image/jpeg',
-        'image/png',
-        'image/webp',
-    ];
-
-    const messageType: MessageTypeDto =
-        imageTypes.includes(file.mimetype)
-            ? MessageTypeDto.IMAGE
-            : MessageTypeDto.FILE;
-
-    return this.chatService.sendMessage(
+    const message =
+      await this.chatService.sendMessage(
         user.sub,
         id,
-        {
+        dto,
+      );
+
+    this.chatGateway.emitNewMessage(
+      id,
+      message,
+    );
+
+    return message;
+  }
+
+  @Post(':id/files')
+  @UseInterceptors(
+  FileInterceptor('file', {
+      storage: diskStorage({
+      destination: './uploads/chat',
+
+      filename: (
+          req,
+          file,
+          callback,
+      ) => {
+          const uniqueName =
+          `${Date.now()}-${Math.round(
+              Math.random() * 1e9,
+          )}`;
+
+          callback(
+          null,
+          `${uniqueName}${extname(file.originalname)}`,
+          );
+      },
+      }),
+
+      limits: {
+      fileSize: 10 * 1024 * 1024,
+      },
+  }),
+  )
+  async sendFile(
+  @CurrentUser()
+  user: any,
+
+  @Param('id', ParseUUIDPipe)
+  id: string,
+
+  @UploadedFile()
+  file: Express.Multer.File,
+  ) {
+  if (!file) {
+      throw new BadRequestException(
+      'Vui lòng chọn file',
+      );
+  }
+
+  const imageTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+  ];
+
+  const messageType: MessageTypeDto =
+      imageTypes.includes(file.mimetype)
+          ? MessageTypeDto.IMAGE
+          : MessageTypeDto.FILE;
+
+  const message =
+    await this.chatService.sendMessage(
+      user.sub,
+      id,
+      {
         messageType,
         fileUrl:
-            `uploads/chat/${file.filename}`,
-        },
+          `uploads/chat/${file.filename}`,
+      },
     );
-    }
 
+  this.chatGateway.emitNewMessage(
+    id,
+    message,
+  );
+
+  return message;
+  }
 }

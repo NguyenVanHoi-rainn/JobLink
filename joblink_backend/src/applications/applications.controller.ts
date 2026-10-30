@@ -11,6 +11,7 @@ import {
 
 import { ApplicationsService } from './applications.service.js';
 import { ApplyJobDto } from './dto/apply-job.dto.js';
+import { UpdateApplicationStatusDto } from './dto/update-application-status.dto.js';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -23,13 +24,18 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
   JwtAuthGuard,
   RolesGuard,
 )
-@Roles('WORKER')
 export class ApplicationsController {
   constructor(
-    private readonly applicationsService: ApplicationsService,
+    private readonly applicationsService:
+      ApplicationsService,
   ) {}
 
+  // =====================================================
+  // WORKER
+  // =====================================================
+
   @Post('jobs/:jobId/apply')
+  @Roles('WORKER')
   applyJob(
     @CurrentUser()
     user: any,
@@ -51,6 +57,7 @@ export class ApplicationsController {
   }
 
   @Get('applications/me')
+  @Roles('WORKER')
   getMyApplications(
     @CurrentUser()
     user: any,
@@ -61,6 +68,7 @@ export class ApplicationsController {
   }
 
   @Get('applications/me/:id')
+  @Roles('WORKER')
   getMyApplicationById(
     @CurrentUser()
     user: any,
@@ -78,6 +86,7 @@ export class ApplicationsController {
   }
 
   @Patch('applications/me/:id/withdraw')
+  @Roles('WORKER')
   withdrawApplication(
     @CurrentUser()
     user: any,
@@ -89,6 +98,115 @@ export class ApplicationsController {
     id: string,
   ) {
     return this.applicationsService.withdrawApplication(
+      user.sub,
+      id,
+    );
+  }
+
+  // =====================================================
+  // EMPLOYER
+  // =====================================================
+
+  @Get('employer/jobs')
+  @Roles('EMPLOYER')
+  getEmployerJobs(
+    @CurrentUser()
+    user: any,
+  ) {
+    return this.applicationsService.getEmployerJobs(
+      user.sub,
+    );
+  }
+
+  @Get('employer/jobs/:jobId/applications')
+  @Roles('EMPLOYER')
+  getJobApplications(
+    @CurrentUser()
+    user: any,
+
+    @Param(
+      'jobId',
+      ParseUUIDPipe,
+    )
+    jobId: string,
+  ) {
+    return this.applicationsService.getJobApplications(
+      user.sub,
+      jobId,
+    );
+  }
+
+  @Get('employer/applications/:id')
+  @Roles('EMPLOYER')
+  getApplicationForEmployer(
+    @CurrentUser()
+    user: any,
+
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
+    id: string,
+  ) {
+    return this.applicationsService.getApplicationForEmployer(
+      user.sub,
+      id,
+    );
+  }
+
+  @Get('employer/applications/:id/cv')
+  @Roles('EMPLOYER')
+  getApplicationCv(
+    @CurrentUser()
+    user: any,
+
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
+    id: string,
+  ) {
+    return this.applicationsService.getApplicationCv(
+      user.sub,
+      id,
+    );
+  }
+
+  @Patch('employer/applications/:id/status')
+  @Roles('EMPLOYER')
+  updateApplicationStatus(
+    @CurrentUser()
+    user: any,
+
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
+    id: string,
+
+    @Body()
+    dto: UpdateApplicationStatusDto,
+  ) {
+    return this.applicationsService.updateApplicationStatus(
+      user.sub,
+      id,
+      dto,
+    );
+  }
+
+  @Get('employer/applications/:id/match')
+  @Roles('EMPLOYER')
+  getCandidateMatch(
+    @CurrentUser()
+    user: any,
+
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
+    id: string,
+  ) {
+    return this.applicationsService.getCandidateMatch(
       user.sub,
       id,
     );

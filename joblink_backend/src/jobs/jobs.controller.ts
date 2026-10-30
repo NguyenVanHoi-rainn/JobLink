@@ -13,13 +13,15 @@ import { JobsService } from './jobs.service.js';
 
 import { CreateJobDto } from './dto/create-job.dto.js';
 import { UpdateJobDto } from './dto/update-job.dto.js';
+import { UpdateEmployerProfileDto } from './dto/update-employer-profile.dto.js';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
+
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 
-@Controller('employers/me/jobs')
+@Controller('employers/me')
 @UseGuards(
   JwtAuthGuard,
   RolesGuard,
@@ -30,7 +32,63 @@ export class JobsController {
     private readonly jobsService: JobsService,
   ) {}
 
-  @Get()
+  // =====================================================
+  // EMPLOYER PROFILE
+  // =====================================================
+
+  @Get('profile')
+  getMyEmployerProfile(
+    @CurrentUser()
+    user: any,
+  ) {
+    return this.jobsService.getMyEmployerProfile(
+      user.sub,
+    );
+  }
+
+  @Patch('profile')
+  updateMyEmployerProfile(
+    @CurrentUser()
+    user: any,
+
+    @Body()
+    dto: UpdateEmployerProfileDto,
+  ) {
+    return this.jobsService.updateMyEmployerProfile(
+      user.sub,
+      dto,
+    );
+  }
+
+  @Patch('profile/submit-verification')
+  submitEmployerVerification(
+    @CurrentUser()
+    user: any,
+  ) {
+    return this.jobsService.submitEmployerVerification(
+      user.sub,
+    );
+  }
+
+  // =====================================================
+  // JOB META
+  // =====================================================
+
+  @Get('jobs/meta/categories')
+  getActiveCategories() {
+    return this.jobsService.getActiveCategories();
+  }
+
+  @Get('jobs/meta/skills')
+  getActiveSkills() {
+    return this.jobsService.getActiveSkills();
+  }
+
+  // =====================================================
+  // JOB LIST
+  // =====================================================
+
+  @Get('jobs')
   getMyJobs(
     @CurrentUser()
     user: any,
@@ -40,12 +98,19 @@ export class JobsController {
     );
   }
 
-  @Get(':id')
+  // =====================================================
+  // JOB DETAIL
+  // =====================================================
+
+  @Get('jobs/:id')
   getMyJobById(
     @CurrentUser()
     user: any,
 
-    @Param('id', ParseUUIDPipe)
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
     id: string,
   ) {
     return this.jobsService.getMyJobById(
@@ -54,7 +119,11 @@ export class JobsController {
     );
   }
 
-  @Post()
+  // =====================================================
+  // CREATE
+  // =====================================================
+
+  @Post('jobs')
   createJob(
     @CurrentUser()
     user: any,
@@ -68,12 +137,19 @@ export class JobsController {
     );
   }
 
-  @Patch(':id')
+  // =====================================================
+  // UPDATE
+  // =====================================================
+
+  @Patch('jobs/:id')
   updateJob(
     @CurrentUser()
     user: any,
 
-    @Param('id', ParseUUIDPipe)
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
     id: string,
 
     @Body()
@@ -86,12 +162,19 @@ export class JobsController {
     );
   }
 
-  @Patch(':id/publish')
+  // =====================================================
+  // PUBLISH
+  // =====================================================
+
+  @Patch('jobs/:id/publish')
   publishJob(
     @CurrentUser()
     user: any,
 
-    @Param('id', ParseUUIDPipe)
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
     id: string,
   ) {
     return this.jobsService.publishJob(
@@ -100,12 +183,19 @@ export class JobsController {
     );
   }
 
-  @Patch(':id/close')
+  // =====================================================
+  // CLOSE
+  // =====================================================
+
+  @Patch('jobs/:id/close')
   closeJob(
     @CurrentUser()
     user: any,
 
-    @Param('id', ParseUUIDPipe)
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
     id: string,
   ) {
     return this.jobsService.closeJob(
@@ -114,12 +204,19 @@ export class JobsController {
     );
   }
 
-  @Patch(':id/republish')
+  // =====================================================
+  // REPUBLISH
+  // =====================================================
+
+  @Patch('jobs/:id/republish')
   republishJob(
     @CurrentUser()
     user: any,
 
-    @Param('id', ParseUUIDPipe)
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
     id: string,
   ) {
     return this.jobsService.republishJob(

@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../core/network/api_client.dart';
 import '../core/storage/token_storage.dart';
 import '../models/auth_user.dart';
+import 'push_notification_service.dart';
 
 class AuthService {
   final Dio _dio =
@@ -27,7 +28,8 @@ class AuthService {
     );
 
     final token =
-    data['accessToken']?.toString();
+    data['accessToken']
+        ?.toString();
 
     if (
     token == null ||
@@ -40,6 +42,10 @@ class AuthService {
     await TokenStorage.saveToken(
       token,
     );
+
+    await PushNotificationService
+        .instance
+        .syncToken();
 
     return getMe();
   }
@@ -81,6 +87,10 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    await PushNotificationService
+        .instance
+        .unregisterCurrentToken();
+
     await TokenStorage.deleteToken();
   }
 }

@@ -557,6 +557,26 @@ constructor(
     return updated;
   }
 
+  async getEmployerJobs(
+    userId: string,
+  ) {
+    const employer =
+      await this.getEmployer(
+        userId,
+      );
+
+    return this.prisma.job.findMany({
+      where: {
+        employerId:
+          employer.id,
+      },
+
+      include: {
+        category: true,
+      },
+    });
+  }
+
     async getJobApplications(
     userId: string,
     jobId: string,
@@ -745,9 +765,14 @@ constructor(
         await this.getEmployer(userId);
 
     const application =
-      await this.prisma.application.findUnique({
+      await this.prisma.application.findFirst({
         where: {
           id: applicationId,
+
+          job: {
+            employerId:
+              employer.id,
+          },
         },
 
         include: {

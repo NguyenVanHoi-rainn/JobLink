@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module.js';
 
+import { FirebaseAdminService } from './firebase-admin.service.js';
 import { NotificationsController } from './notifications.controller.js';
 import { NotificationsService } from './notifications.service.js';
 
@@ -15,6 +16,7 @@ import { NotificationsService } from './notifications.service.js';
   ],
 
   providers: [
+    FirebaseAdminService,
     NotificationsService,
   ],
 
