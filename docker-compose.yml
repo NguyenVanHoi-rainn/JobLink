@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # ======================================================
+  # 1. DATABASE: POSTGRESQL
+  # ======================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: joblink_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: joblink_user
+      POSTGRES_PASSWORD: joblink_password
+      POSTGRES_DB: joblink_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U joblink_user -d joblink_db']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - joblink_network
+
+  # ======================================================
+  # 2. AI SERVICE: FASTAPI / PYTHON
+  # ======================================================
+  ai_service:
+    build:
+      context: ./joblink_ai
+      dockerfile: Dockerfile
+    container_name: joblink_ai_service
+    restart: always
+    environment:
+      - PORT=8000
+      - DATABASE_URL=postgresql://joblink_user:joblink_password@postgres:5432/joblink_db
+    ports:
+      - '8000:8000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - joblink_network
+
+  # ======================================================
+  # 3. BACKEND: NESTJS API
+  # ======================================================
+  backend:
+    build:
+      context: ./joblink_backend
+      dockerfile: Dockerfile
+    container_name: joblink_backend
+    restart: always
+    environment:
+      DATABASE_URL: 'postgresql://joblink_user:joblink_password@postgres:5432/joblink_db?schema=public'
+      AI_SERVICE_URL: 'http://ai_service:8000'
+      PORT: 3000
+      JWT_SECRET: 'joblink_super_secret_key_2026'
+    ports:
+      - '3000:3000'
+      - '5555:5555'
+    volumes:
+      - backend_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai_service:
+        condition: service_healthy
+    networks:
+      - joblink_network
+
+  # ======================================================
+  # 4. ADMIN WEB: REACTJS / NGINX
+  # ======================================================
+  admin_web:
+    build:
+      context: ./joblink_admin
+      dockerfile: Dockerfile
+    container_name: joblink_admin_web
+    restart: always
+    ports:
+      - '80:80'
+    depends_on:
+      - backend
+    networks:
+      - joblink_network
+
+# ========================================================
+# VOLUMES & NETWORKS CONFIGURATION
+# ========================================================
+volumes:
+  postgres_data:
+    driver: local
+  backend_uploads:
+    driver: local
+
+networks:
+  joblink_network:
+    driver: bridge
