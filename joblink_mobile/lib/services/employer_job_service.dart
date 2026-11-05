@@ -297,6 +297,36 @@ class EmployerJobService {
     return [];
   }
 
+  // =====================================================
+  // APPLICATIONS (UC08 & UC09)
+  // =====================================================
+
+  Future<List<dynamic>> getJobApplications(String jobId) async {
+    final response = await _dio.get('/employers/me/jobs/$jobId/applications');
+    return _extractList(response.data);
+  }
+
+  Future<Map<String, dynamic>> updateApplicationStatus({
+    required String applicationId,
+    required String status, // 'REVIEWING' | 'ACCEPTED' | 'REJECTED'
+  }) async {
+    final response = await _dio.patch(
+      '/employers/me/applications/$applicationId/status',
+      data: {'status': status},
+    );
+    return _extractMap(response.data);
+  }
+
+  String resolveFileUrl(String fileUrl) {
+    if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+      return fileUrl;
+    }
+    var baseUrl = _dio.options.baseUrl;
+    baseUrl = baseUrl.replaceFirst(RegExp(r'/api/v1/?$'), '');
+    final cleanPath = fileUrl.startsWith('/') ? fileUrl.substring(1) : fileUrl;
+    return '$baseUrl/$cleanPath';
+  }
+
   Map<String, dynamic> _extractMap(dynamic data) {
     if (data is! Map) {
       throw StateError('Dữ liệu backend không hợp lệ');

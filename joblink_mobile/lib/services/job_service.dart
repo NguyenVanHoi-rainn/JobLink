@@ -309,12 +309,29 @@ class JobService {
   // SAVED JOB
   // =====================================================
 
+  Future<List<Map<String, dynamic>>> getSavedJobs() async {
+    final response = await _dio.get('/saved-jobs');
+
+    final list = _extractList(
+      response.data,
+      keys: ['items', 'data', 'results'],
+    );
+
+    return list
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
   Future<bool> isJobSaved(String jobId) async {
     final response = await _dio.get('/saved-jobs/$jobId/check');
-
     final data = response.data;
 
     if (data is Map) {
+      final nested = data['data'];
+      if (nested is Map) {
+        return nested['isSaved'] == true;
+      }
       return data['isSaved'] == true;
     }
 
@@ -411,6 +428,8 @@ class JobService {
 
     await _dio.post('/jobs/$jobId/apply', data: data);
   }
+
+
 
   // =====================================================
   // PARSE SEARCH RESULT

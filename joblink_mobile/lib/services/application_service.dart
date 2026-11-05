@@ -62,6 +62,33 @@ class ApplicationService {
     );
   }
 
+  Future<Map<String, dynamic>> withdrawApplication(String applicationId) async {
+    final response = await _dio.patch(
+      '/applications/me/$applicationId/withdraw',
+    );
+
+    final data = response.data;
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      if (map['data'] is Map) {
+        return Map<String, dynamic>.from(map['data']);
+      }
+      return map;
+    }
+
+    throw StateError('Dữ liệu không hợp lệ');
+  }
+
+  String resolveFileUrl(String fileUrl) {
+    if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+      return fileUrl;
+    }
+    var baseUrl = _dio.options.baseUrl;
+    baseUrl = baseUrl.replaceFirst(RegExp(r'/api/v1/?$'), '');
+    final cleanPath = fileUrl.startsWith('/') ? fileUrl.substring(1) : fileUrl;
+    return '$baseUrl/$cleanPath';
+  }
+
   List<dynamic> _extractList(
       dynamic data,
       ) {

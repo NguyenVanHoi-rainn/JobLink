@@ -266,18 +266,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool get _canSend {
-    if (conversation.type != 'APPLICANT_GROUP') {
-      return true;
-    }
-
-    for (final member in conversation.members) {
-      if (member.userId == _currentUserId &&
-          member.memberRole == 'OWNER') {
-        return true;
+    if (conversation.type == 'APPLICANT_GROUP') {
+      for (final member in conversation.members) {
+        if (member.userId == _currentUserId && member.memberRole == 'OWNER') {
+          return true;
+        }
       }
+      return false;
     }
 
-    return false;
+    return true;
   }
 
   @override

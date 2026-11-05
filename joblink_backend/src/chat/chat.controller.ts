@@ -155,6 +155,18 @@ export class ChatController {
     return message;
   }
 
+  @Post('selected-group')
+    createSelectedGroup(
+      @CurrentUser() user: any,
+      @Body() body: { jobId: string; groupName?: string; workerUserIds: string[] },
+    ) {
+      return this.chatService.createSelectedGroup(
+        user.sub,
+        body.jobId,
+        body as any,
+      );
+  }
+
   @Post(':id/files')
   @UseInterceptors(
   FileInterceptor('file', {

@@ -934,135 +934,113 @@ export class ChatService {
   }
 
   async createSelectedGroup(
-  userId: string,
-  jobId: string,
-  dto: CreateSelectedGroupDto,
-  ) {
-  const {
-      job,
-  } = await this.getEmployerJob(
-      userId,
-      jobId,
-  );
+        userId: string,
+        jobId: string,
+        dto: CreateSelectedGroupDto,
+      ) {
+        const employer = await this.prisma.employerProfile.findUnique({
+          where: { userId },
+        });
 
-  const uniqueIds = [
-      ...new Set(
-      dto.memberUserIds,
-      ),
-  ];
+        if (!employer) {
+          throw new ForbiddenException('Chỉ nhà tuyển dụng mới được tạo nhóm làm việc');
+        }
 
-  if (
-      uniqueIds.includes(
-      userId,
-      )
-  ) {
-      throw new BadRequestException(
-      'Không cần thêm Employer vào memberUserIds',
-      );
-  }
+        const job = await this.prisma.job.findFirst({
+          where: { id: jobId, employerId: employer.id },
+        });
 
-  // Kiểm tra tất cả Worker có thực sự
-  // ứng tuyển Job này hay không.
-  const applications =
-      await this.prisma.application.findMany({
-      where: {
-          jobId,
+        if (!job) {
+          throw new NotFoundException('Không tìm thấy công việc hoặc bạn không có quyền');
+        }
 
-          status: {
-          notIn: [
-              'WITHDRAWN',
-              'REJECTED',
-          ],
+        // Ép kiểu dto sang any để tránh lỗi thiếu thuộc tính trong DTO
+        const body = dto as any;
+        const workerUserIds: string[] = body.workerUserIds || [];
+
+        if (!workerUserIds || workerUserIds.length === 0) {
+          throw new BadRequestException('Vui lòng chọn ít nhất một ứng viên để thêm vào nhóm');
+        }
+
+        const uniqueWorkerUserIds = [...new Set(workerUserIds)].filter(id => id !== userId);
+
+        // 1. Lấy danh sách WorkerProfile tương ứng với userIds
+        const workerProfiles = await this.prisma.workerProfile.findMany({
+          where: {
+            userId: {
+              in: uniqueWorkerUserIds,
+            },
           },
+          select: { id: true, userId: true },
+        });
 
-          worker: {
-          userId: {
-              in: uniqueIds,
+        const workerProfileIds = workerProfiles.map((w) => w.id);
+
+        // 2. Kiểm tra đơn ứng tuyển hợp lệ thông qua workerId
+        const applications = await this.prisma.application.findMany({
+          where: {
+            jobId,
+            status: {
+              notIn: ['WITHDRAWN', 'REJECTED'],
+            },
+            workerId: {
+              in: workerProfileIds,
+            },
           },
-          },
-      },
+          select: { workerId: true },
+        });
 
-      include: {
-          worker: true,
-      },
-      });
+        const validWorkerProfileIds = new Set(applications.map((app) => app.workerId));
+        const validUserIds = workerProfiles
+          .filter((w) => validWorkerProfileIds.has(w.id))
+          .map((w) => w.userId);
 
-  const validUserIds =
-      applications.map(
-      (application) =>
-          application.worker.userId,
-      );
+        if (validUserIds.length !== uniqueWorkerUserIds.length) {
+          throw new BadRequestException('Có Worker không thuộc danh sách ứng viên hợp lệ của Job');
+        }
 
-  if (
-      validUserIds.length !==
-      uniqueIds.length
-  ) {
-      throw new BadRequestException(
-      'Có Worker không thuộc danh sách ứng viên hợp lệ của Job',
-      );
-  }
-
-  return this.prisma.$transaction(
-      async (tx) => {
-      const group =
-          await tx.conversation.create({
-          data: {
+        // 3. Tạo Group Chat trong Transaction
+        return this.prisma.$transaction(async (tx) => {
+          const groupName = body.groupName || body.name;
+          const conversation = await tx.conversation.create({
+            data: {
               jobId,
-
-              createdBy:
-              userId,
-
-              type:
-              'SELECTED_GROUP',
-
-              name:
-              dto.name,
-          },
+              type: 'SELECTED_GROUP',
+              name: groupName?.trim() || `Nhóm làm việc - ${job.title}`,
+              createdBy: userId,
+            },
           });
 
-      // Employer = OWNER
-      await tx.conversationMember.create({
-          data: {
-          conversationId:
-              group.id,
+          // Thêm Employer (OWNER)
+          await tx.conversationMember.create({
+            data: {
+              conversationId: conversation.id,
+              userId,
+              memberRole: 'OWNER',
+            },
+          });
 
-          userId,
+          // Thêm các Worker (MEMBER)
+          const memberData = validUserIds.map((workerUserId) => ({
+            conversationId: conversation.id,
+            userId: workerUserId,
+            memberRole: 'MEMBER' as const,
+          }));
 
-          memberRole:
-              'OWNER',
-          },
-      });
+          await tx.conversationMember.createMany({
+            data: memberData,
+            skipDuplicates: true,
+          });
 
-      // Worker = MEMBER
-      await tx.conversationMember.createMany({
-          data:
-          uniqueIds.map(
-              (workerUserId) => ({
-              conversationId:
-                  group.id,
-
-              userId:
-                  workerUserId,
-
-              memberRole:
-                  'MEMBER',
-              }),
-          ),
-
-          skipDuplicates: true,
-      });
-
-      return tx.conversation.findUnique({
-          where: {
-          id: group.id,
-          },
-
-          include: {
-          members: true,
-          },
-      });
-      },
-  );
+          return tx.conversation.findUnique({
+            where: {
+              id: conversation.id,
+            },
+            include: {
+              members: true,
+            },
+          });
+        });
   }
 
   async addSelectedGroupMembers(

@@ -23,20 +23,38 @@ constructor(
   private async getWorker(
     userId: string,
   ) {
-    const worker =
-      await this.prisma.workerProfile.findUnique({
+    const user =
+      await this.prisma.user.findUnique({
         where: {
-          userId,
+          id: userId,
+        },
+
+        select: {
+          id: true,
+          role: true,
         },
       });
 
-    if (!worker) {
+    if (
+      !user ||
+      user.role !== 'WORKER'
+    ) {
       throw new NotFoundException(
-        'Không tìm thấy hồ sơ Worker',
+        'Không tìm thấy tài khoản Worker',
       );
     }
 
-    return worker;
+    return this.prisma.workerProfile.upsert({
+      where: {
+        userId,
+      },
+
+      update: {},
+
+      create: {
+        userId,
+      },
+    });
   }
 
   private async validateCv(

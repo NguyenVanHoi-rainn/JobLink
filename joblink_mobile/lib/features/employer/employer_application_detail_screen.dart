@@ -2,10 +2,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../models/chat_conversation.dart';
 import '../../services/employer_application_service.dart';
+import '../worker/chat_screen.dart';
 
-class EmployerApplicationDetailScreen
-    extends StatefulWidget {
+class EmployerApplicationDetailScreen extends StatefulWidget {
   const EmployerApplicationDetailScreen({
     super.key,
     required this.applicationId,
@@ -14,24 +15,20 @@ class EmployerApplicationDetailScreen
   final String applicationId;
 
   @override
-  State<EmployerApplicationDetailScreen>
-  createState() =>
+  State<EmployerApplicationDetailScreen> createState() =>
       _EmployerApplicationDetailScreenState();
 }
 
 class _EmployerApplicationDetailScreenState
     extends State<EmployerApplicationDetailScreen> {
-  final EmployerApplicationService
-  _service =
-  EmployerApplicationService();
+  static const Color _primary = Color(0xFF2563EB);
+  static const Color _aiColor = Color(0xFF7C3AED);
+
+  final EmployerApplicationService _service = EmployerApplicationService();
 
   Map<String, dynamic>? _application;
-  Map<String, dynamic>? _match;
-
   bool _loading = true;
-  bool _changingStatus = false;
-  bool _openingCv = false;
-
+  bool _updatingStatus = false;
   String? _error;
 
   @override
@@ -41,1397 +38,550 @@ class _EmployerApplicationDetailScreenState
   }
 
   Future<void> _load() async {
-    if (mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
-
-    try {
-      final application =
-      await _service
-          .getApplication(
-        widget.applicationId,
-      );
-
-      Map<String, dynamic>?
-      match;
-
-      try {
-        match =
-        await _service
-            .getCandidateMatch(
-          widget.applicationId,
-        );
-      } catch (error) {
-        debugPrint(
-          'Candidate match unavailable: $error',
-        );
-      }
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _application =
-            application;
-        _match = match;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _error =
-        'Không thể tải hồ sơ ứng viên';
-      });
-
-      debugPrint(
-        'Load employer application detail failed: $error',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _changeStatus(
-      String status,
-      ) async {
-    final message =
-    status == 'REVIEWING'
-        ? 'Chuyển hồ sơ sang trạng thái đang xem xét?'
-        : status == 'ACCEPTED'
-        ? 'Chấp nhận ứng viên này?'
-        : 'Từ chối ứng viên này?';
-
-    final confirmed =
-    await showDialog<bool>(
-      context: context,
-      builder: (context) =>
-          AlertDialog(
-            title: const Text(
-              'Xác nhận',
-            ),
-            content: Text(
-              message,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () =>
-                    Navigator.pop(
-                      context,
-                      false,
-                    ),
-                child:
-                const Text(
-                  'Hủy',
-                ),
-              ),
-              FilledButton(
-                onPressed: () =>
-                    Navigator.pop(
-                      context,
-                      true,
-                    ),
-                child:
-                const Text(
-                  'Đồng ý',
-                ),
-              ),
-            ],
-          ),
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
     setState(() {
-      _changingStatus = true;
+      _loading = true;
+      _error = null;
     });
 
     try {
-      await _service.updateStatus(
-        widget.applicationId,
-        status,
+      final data = await _service.getApplicationDetail(widget.applicationId);
+      if (!mounted) return;
+      setState(() {
+        _application = data;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Không thể tải chi tiết đơn ứng tuyển';
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _changeStatus(String newStatus) async {
+    if (_updatingStatus) return;
+    setState(() => _updatingStatus = true);
+
+    try {
+      await _service.updateApplicationStatus(
+        applicationId: widget.applicationId,
+        status: newStatus,
       );
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
-        SnackBar(
-          content: Text(
-            _statusSuccessText(
-              status,
-            ),
-          ),
-        ),
+      if (!mounted) return;
+      _showMessage(
+        newStatus == 'REVIEWING'
+            ? 'Đã chuyển sang xem xét'
+            : newStatus == 'ACCEPTED'
+            ? 'Đã chấp nhận ứng viên'
+            : 'Đã từ chối ứng viên',
       );
-
       await _load();
-    } on DioException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      final data =
-          error.response?.data;
-
-      String? message;
-
-      if (data is Map) {
-        final raw =
-        data['message'];
-
-        if (raw is List) {
-          message =
-              raw.join(', ');
-        } else {
-          message =
-              raw?.toString();
-        }
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
-        SnackBar(
-          content: Text(
-            message ??
-                'Không thể cập nhật trạng thái',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Không thể cập nhật trạng thái',
-          ),
-        ),
-      );
+    } on DioException catch (e) {
+      _showMessage(_dioMessage(e) ?? 'Cập nhật trạng thái thất bại');
+    } catch (_) {
+      _showMessage('Lỗi cập nhật');
     } finally {
-      if (mounted) {
-        setState(() {
-          _changingStatus =
-          false;
-        });
-      }
+      if (mounted) setState(() => _updatingStatus = false);
     }
   }
 
-  Future<void> _openCv() async {
-    setState(() {
-      _openingCv = true;
-    });
-
+  Future<void> _startChat(String targetUserId) async {
     try {
-      final cv =
-      await _service.getCv(
-        widget.applicationId,
-      );
-
-      final fileUrl =
-      _text(
-        cv['fileUrl'],
-      );
-
-      if (fileUrl == null) {
-        throw StateError(
-          'CV không có đường dẫn file',
-        );
-      }
-
-      final resolved =
-      _service
-          .resolveBackendFileUrl(
-        fileUrl,
-      );
-
-      final uri =
-      Uri.parse(resolved);
-
-      final opened =
-      await launchUrl(
-        uri,
-        mode:
-        LaunchMode.externalApplication,
-      );
-
-      if (!opened) {
-        throw StateError(
-          'Không thể mở CV',
-        );
-      }
-    } on DioException catch (error) {
+      final conversationData = await _service.createPrivateChat(targetUserId);
       if (!mounted) return;
 
-      final data =
-          error.response?.data;
-
-      String? message;
-
-      if (data is Map) {
-        message =
-            data['message']
-                ?.toString();
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
-        SnackBar(
-          content: Text(
-            message ??
-                'Không thể mở CV',
-          ),
+      final conversation = ChatConversation.fromJson(conversationData);
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(conversation: conversation),
         ),
       );
-    } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Không thể mở CV',
-          ),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _openingCv = false;
-        });
-      }
+    } on DioException catch (e) {
+      _showMessage(_dioMessage(e) ?? 'Không thể mở cuộc trò chuyện');
     }
+  }
+
+  void _showMessage(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  String? _dioMessage(DioException error) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final msg = data['message'];
+      if (msg is List) return msg.join(', ');
+      return msg?.toString();
+    }
+    return null;
   }
 
   @override
-  Widget build(
-      BuildContext context,
-      ) {
+  Widget build(BuildContext context) {
+    final app = _application;
+    final worker = app?['worker'] as Map<String, dynamic>?;
+    final user = worker?['user'] as Map<String, dynamic>?;
+
+    final fullName = worker?['fullName']?.toString() ?? 'Ứng viên';
+    final email = user?['email']?.toString() ?? '';
+    final phone = worker?['phone']?.toString();
+    final bio = worker?['bio']?.toString();
+    final searchArea = worker?['searchArea']?.toString();
+    final status = app?['status']?.toString() ?? 'APPLIED';
+    final note = app?['note']?.toString();
+
+    // CV
+    final cv = app?['cv'] as Map<String, dynamic>?;
+    final cvUrl = cv?['fileUrl']?.toString();
+    final cvName = cv?['fileName']?.toString();
+
+    // AI Match
+    final match = app?['candidateMatch'] as Map<String, dynamic>?;
+    final rawScore = match?['matchingScore'] ?? match?['score'];
+    final score = rawScore is num ? rawScore.round() : null;
+    final reasons = (match?['reasons'] as List<dynamic>?) ?? [];
+
+    // Kỹ năng & Lịch rảnh
+    final skills = (worker?['workerSkills'] as List<dynamic>?) ?? [];
+    final availabilities = (worker?['availabilities'] as List<dynamic>?) ?? [];
+
     return Scaffold(
-      backgroundColor:
-      const Color(
-        0xFFF5F7FB,
-      ),
+      backgroundColor: const Color(0xFFF5F7FB),
       appBar: AppBar(
-        title:
-        const Text(
-          'Hồ sơ ứng viên',
+        title: const Text(
+          'Chi tiết ứng viên',
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        backgroundColor:
-        Colors.white,
-        surfaceTintColor:
-        Colors.white,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
       ),
-      body:
-      _buildBody(),
-      bottomNavigationBar:
-      _buildActions(),
-    );
-  }
-
-  Widget _buildBody() {
-    if (_loading) {
-      return const Center(
-        child:
-        CircularProgressIndicator(),
-      );
-    }
-
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding:
-          const EdgeInsets.all(
-            24,
-          ),
-          child: Column(
-            mainAxisSize:
-            MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons
-                    .cloud_off_rounded,
-                size: 44,
-                color:
-                Colors.redAccent,
-              ),
-              const SizedBox(
-                height: 12,
-              ),
-              Text(
-                _error!,
-                textAlign:
-                TextAlign.center,
-              ),
-              const SizedBox(
-                height: 14,
-              ),
-              OutlinedButton.icon(
-                onPressed: _load,
-                icon: const Icon(
-                  Icons
-                      .refresh_rounded,
-                ),
-                label:
-                const Text(
-                  'Thử lại',
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final application =
-        _application;
-
-    if (application == null) {
-      return const Center(
-        child: Text(
-          'Không tìm thấy hồ sơ',
-        ),
-      );
-    }
-
-    final worker =
-    _asMap(
-      application['worker'],
-    );
-
-    final user =
-    _asMap(
-      worker?['user'],
-    );
-
-    final job =
-    _asMap(
-      application['job'],
-    );
-
-    final cv =
-    _asMap(
-      application['cv'],
-    );
-
-    final status =
-        _text(
-          application['status'],
-        ) ??
-            'APPLIED';
-
-    final name =
-        _firstText([
-          worker?['fullName'],
-          worker?['name'],
-          user?['email'],
-        ]) ??
-            'Ứng viên';
-
-    final email =
-    _text(
-      user?['email'],
-    );
-
-    final phone =
-    _text(
-      worker?['phone'],
-    );
-
-    final address =
-    _text(
-      worker?['address'],
-    );
-
-    final note =
-    _text(
-      application['note'],
-    );
-
-    final jobTitle =
-        _text(
-          job?['title'],
-        ) ??
-            'Công việc';
-
-    final skills =
-    _extractSkillNames(
-      worker?['workerSkills'],
-    );
-
-    final experiences =
-    _extractExperiences(
-      worker?['workExperiences'],
-    );
-
-    final reasons =
-    _extractReasons(
-      _match?['reasons'],
-    );
-
-    final score =
-    _matchScore(
-      _match,
-    );
-
-    final hasCv =
-        cv != null;
-
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        physics:
-        const AlwaysScrollableScrollPhysics(),
-        padding:
-        const EdgeInsets.fromLTRB(
-          18,
-          18,
-          18,
-          30,
-        ),
-        children: [
-          _ProfileHeader(
-            name: name,
-            email: email,
-            status: status,
-          ),
-          const SizedBox(
-            height: 14,
-          ),
-          _CardSection(
-            title:
-            'Thông tin ứng tuyển',
-            children: [
-              _InfoRow(
-                icon:
-                Icons.work_outline,
-                label: 'Công việc',
-                value: jobTitle,
-              ),
-              if (phone !=
-                  null)
-                _InfoRow(
-                  icon:
-                  Icons
-                      .phone_outlined,
-                  label:
-                  'Điện thoại',
-                  value: phone,
-                ),
-              if (address !=
-                  null)
-                _InfoRow(
-                  icon:
-                  Icons
-                      .location_on_outlined,
-                  label:
-                  'Địa chỉ',
-                  value: address,
-                ),
-              if (note !=
-                  null)
-                _InfoRow(
-                  icon:
-                  Icons.notes_rounded,
-                  label:
-                  'Ghi chú',
-                  value: note,
-                ),
-            ],
-          ),
-          if (skills.isNotEmpty) ...[
-            const SizedBox(
-              height: 14,
-            ),
-            _CardSection(
-              title: 'Kỹ năng',
-              children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children:
-                  skills
-                      .map(
-                        (skill) =>
-                        Chip(
-                          label:
-                          Text(
-                            skill,
-                          ),
-                          visualDensity:
-                          VisualDensity
-                              .compact,
-                        ),
-                  )
-                      .toList(),
-                ),
-              ],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error!),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _load,
+              child: const Text('Thử lại'),
             ),
           ],
-          if (experiences.isNotEmpty) ...[
-            const SizedBox(
-              height: 14,
-            ),
-            _CardSection(
-              title:
-              'Kinh nghiệm',
-              children:
-              experiences
-                  .map(
-                    (item) =>
-                    Padding(
-                      padding:
-                      const EdgeInsets
-                          .only(
-                        bottom: 10,
+        ),
+      )
+          : ListView(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 100),
+        children: [
+          // Card thông tin ứng viên
+          _card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: _primary.withValues(alpha: 0.1),
+                      child: const Icon(
+                        Icons.person_rounded,
+                        color: _primary,
+                        size: 32,
                       ),
-                      child:
-                      Row(
-                        crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
-                            Icons
-                                .business_center_outlined,
-                            size: 18,
-                            color:
-                            Color(
-                              0xFF64748B,
+                          Text(
+                            fullName,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          const SizedBox(
-                            width: 9,
+                          const SizedBox(height: 4),
+                          Text(
+                            email,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                            ),
                           ),
-                          Expanded(
-                            child:
+                          if (phone != null && phone.isNotEmpty)
                             Text(
-                              item,
+                              phone,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade700,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
-              )
-                  .toList(),
-            ),
-          ],
-          if (_match != null) ...[
-            const SizedBox(
-              height: 14,
-            ),
-            _CardSection(
-              title:
-              'AI Matching',
-              children: [
-                if (score !=
-                    null)
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons
-                            .auto_awesome_rounded,
-                        color:
-                        Color(
-                          0xFF7C3AED,
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    _statusBadge(status),
+                    const Spacer(),
+                    if (user?['id'] != null)
+                      OutlinedButton.icon(
+                        onPressed: () => _startChat(user!['id'].toString()),
+                        icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                        label: const Text('Nhắn tin'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _primary,
                         ),
                       ),
-                      const SizedBox(
-                        width: 8,
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Card AI Match
+          if (score != null) ...[
+            _card(
+              borderColor: _aiColor.withValues(alpha: 0.3),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.auto_awesome_rounded, color: _aiColor),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Đánh giá AI Candidate Matching',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: _aiColor,
+                        ),
                       ),
-                      Text(
-                        '${score.toStringAsFixed(0)}% phù hợp',
-                        style:
-                        const TextStyle(
-                          color:
-                          Color(
-                            0xFF7C3AED,
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _aiColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$score%',
+                          style: const TextStyle(
+                            color: _aiColor,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
                           ),
-                          fontSize: 18,
-                          fontWeight:
-                          FontWeight
-                              .w800,
                         ),
                       ),
                     ],
                   ),
-                if (reasons.isNotEmpty) ...[
-                  const SizedBox(
-                    height: 12,
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Chi tiết phân tích:',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.grey),
                   ),
-                  ...reasons.map(
-                        (reason) =>
-                        Padding(
-                          padding:
-                          const EdgeInsets
-                              .only(
-                            bottom: 7,
-                          ),
-                          child: Row(
-                            crossAxisAlignment:
-                            CrossAxisAlignment
-                                .start,
-                            children: [
-                              const Icon(
-                                Icons
-                                    .check_circle_outline,
-                                size: 17,
-                                color:
-                                Color(
-                                  0xFF7C3AED,
-                                ),
-                              ),
-                              const SizedBox(
-                                width: 7,
-                              ),
-                              Expanded(
-                                child:
-                                Text(
-                                  reason,
-                                ),
-                              ),
-                            ],
-                          ),
+                  const SizedBox(height: 8),
+                  if (reasons.isEmpty)
+                    const Text('Hồ sơ đáp ứng các tiêu chuẩn cơ bản.')
+                  else
+                    ...reasons.map((r) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('• ', style: TextStyle(fontWeight: FontWeight.bold, color: _aiColor)),
+                          Expanded(child: Text(r.toString(), style: const TextStyle(height: 1.35))),
+                        ],
+                      ),
+                    )),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Lời nhắn & Vị trí
+          _card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Thông tin bổ sung',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 12),
+                if (searchArea != null && searchArea.isNotEmpty) ...[
+                  _infoRow(Icons.location_on_outlined, 'Khu vực mong muốn', searchArea),
+                  const SizedBox(height: 10),
+                ],
+                if (bio != null && bio.isNotEmpty) ...[
+                  _infoRow(Icons.info_outline, 'Giới thiệu bản thân', bio),
+                  const SizedBox(height: 10),
+                ],
+                if (note != null && note.isNotEmpty)
+                  _infoRow(Icons.chat_outlined, 'Lời nhắn ứng tuyển', note),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Kỹ năng
+          if (skills.isNotEmpty) ...[
+            _card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Kỹ năng của ứng viên',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: skills.map((s) {
+                      final skillMap = s['skill'] as Map<String, dynamic>?;
+                      final name = skillMap?['name']?.toString() ?? 'Kỹ năng';
+                      return Chip(label: Text(name));
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Ca làm rảnh
+          if (availabilities.isNotEmpty) ...[
+            _card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Thời gian có thể làm việc',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 12),
+                  ...availabilities.map((a) {
+                    final day = _dayString(a['dayOfWeek']?.toString() ?? '');
+                    final start = _formatTime(a['startTime']);
+                    final end = _formatTime(a['endTime']);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.access_time_rounded, size: 16, color: Colors.grey),
+                          const SizedBox(width: 8),
+                          Text('$day: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          Text('$start - $end'),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // File CV đính kèm
+          if (cvUrl != null)
+            _card(
+              child: Row(
+                children: [
+                  const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 36),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          cvName ?? 'CV Ứng viên',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
+                        const Text('Định dạng PDF đính kèm', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: () async {
+                      final fullUrl = _service.resolveFileUrl(cvUrl);
+                      final uri = Uri.parse(fullUrl);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      } else {
+                        _showMessage('Không thể mở file CV');
+                      }
+                    },
+                    child: const Text('Xem CV'),
                   ),
                 ],
-              ],
-            ),
-          ],
-          if (hasCv) ...[
-            const SizedBox(
-              height: 14,
-            ),
-            OutlinedButton.icon(
-              onPressed:
-              _openingCv
-                  ? null
-                  : _openCv,
-              icon:
-              _openingCv
-                  ? const SizedBox(
-                width: 18,
-                height: 18,
-                child:
-                CircularProgressIndicator(
-                  strokeWidth:
-                  2,
-                ),
-              )
-                  : const Icon(
-                Icons
-                    .description_outlined,
-              ),
-              label:
-              const Text(
-                'Xem CV',
               ),
             ),
-          ],
         ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, -3),
+              ),
+            ],
+          ),
+          child: _buildActionButtons(status),
+        ),
       ),
     );
   }
 
-  Widget? _buildActions() {
-    final application =
-        _application;
-
-    if (_loading ||
-        application == null) {
-      return null;
+  Widget _buildActionButtons(String status) {
+    if (_updatingStatus) {
+      return const SizedBox(
+        height: 48,
+        child: Center(child: CircularProgressIndicator()),
+      );
     }
 
-    final status =
-        _text(
-          application['status'],
-        ) ??
-            'APPLIED';
-
-    if (status ==
-        'APPLIED') {
-      return _ActionBar(
-        child: SizedBox(
-          width:
-          double.infinity,
-          child:
-          FilledButton.icon(
-            onPressed:
-            _changingStatus
-                ? null
-                : () =>
-                _changeStatus(
-                  'REVIEWING',
-                ),
-            icon:
-            _changingStatus
-                ? const SizedBox(
-              width: 18,
-              height: 18,
-              child:
-              CircularProgressIndicator(
-                strokeWidth:
-                2,
-              ),
-            )
-                : const Icon(
-              Icons
-                  .visibility_outlined,
-            ),
-            label:
-            const Text(
-              'Chuyển sang xem xét',
-            ),
-          ),
+    if (status == 'APPLIED') {
+      return SizedBox(
+        height: 48,
+        child: FilledButton.tonal(
+          onPressed: () => _changeStatus('REVIEWING'),
+          child: const Text('Bắt đầu xem xét hồ sơ'),
         ),
       );
     }
 
-    if (status ==
-        'REVIEWING') {
-      return _ActionBar(
-        child: Row(
+    if (status == 'REVIEWING') {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => _changeStatus('REJECTED'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
+                minimumSize: const Size(0, 48),
+              ),
+              child: const Text('Từ chối'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FilledButton(
+              onPressed: () => _changeStatus('ACCEPTED'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF16A34A),
+                minimumSize: const Size(0, 48),
+              ),
+              child: const Text('Chấp nhận'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      height: 44,
+      alignment: Alignment.center,
+      child: Text(
+        status == 'ACCEPTED'
+            ? 'Đã duyệt chấp nhận ứng viên này.'
+            : 'Đơn ứng tuyển đã kết thúc xét duyệt.',
+        style: TextStyle(
+          color: status == 'ACCEPTED' ? const Color(0xFF16A34A) : Colors.grey,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _card({required Widget child, Color? borderColor}) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor ?? Colors.grey.shade200),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Expanded(
-              child:
-              OutlinedButton.icon(
-                onPressed:
-                _changingStatus
-                    ? null
-                    : () =>
-                    _changeStatus(
-                      'REJECTED',
-                    ),
-                icon:
-                const Icon(
-                  Icons.close_rounded,
-                ),
-                label:
-                const Text(
-                  'Từ chối',
-                ),
-              ),
-            ),
-            const SizedBox(
-              width: 12,
-            ),
-            Expanded(
-              child:
-              FilledButton.icon(
-                onPressed:
-                _changingStatus
-                    ? null
-                    : () =>
-                    _changeStatus(
-                      'ACCEPTED',
-                    ),
-                icon:
-                const Icon(
-                  Icons
-                      .check_rounded,
-                ),
-                label:
-                const Text(
-                  'Chấp nhận',
-                ),
-              ),
-            ),
+            Icon(icon, size: 16, color: Colors.grey),
+            const SizedBox(width: 6),
+            Text(label, style: const TextStyle(fontSize: 12.5, color: Colors.grey)),
           ],
         ),
-      );
-    }
-
-    return null;
-  }
-
-  String _statusSuccessText(
-      String status,
-      ) {
-    switch (status) {
-      case 'REVIEWING':
-        return 'Đã chuyển hồ sơ sang đang xem xét';
-      case 'ACCEPTED':
-        return 'Đã chấp nhận ứng viên';
-      case 'REJECTED':
-        return 'Đã từ chối ứng viên';
-      default:
-        return 'Đã cập nhật trạng thái';
-    }
-  }
-
-  Map<String, dynamic>? _asMap(
-      dynamic value,
-      ) {
-    if (value is Map) {
-      return Map<String, dynamic>.from(
-        value,
-      );
-    }
-
-    return null;
-  }
-
-  String? _text(
-      dynamic value,
-      ) {
-    if (value == null) {
-      return null;
-    }
-
-    final text =
-    value.toString().trim();
-
-    return text.isEmpty
-        ? null
-        : text;
-  }
-
-  String? _firstText(
-      List<dynamic> values,
-      ) {
-    for (final value
-    in values) {
-      final text =
-      _text(value);
-
-      if (text != null) {
-        return text;
-      }
-    }
-
-    return null;
-  }
-
-  List<String> _extractSkillNames(
-      dynamic value,
-      ) {
-    if (value is! List) {
-      return [];
-    }
-
-    final result =
-    <String>[];
-
-    for (final item
-    in value) {
-      if (item is! Map) {
-        continue;
-      }
-
-      final map =
-      Map<String, dynamic>.from(
-        item,
-      );
-
-      final skill =
-      _asMap(
-        map['skill'],
-      );
-
-      final name =
-      _firstText([
-        skill?['name'],
-        map['name'],
-      ]);
-
-      if (name != null) {
-        result.add(name);
-      }
-    }
-
-    return result;
-  }
-
-  List<String> _extractExperiences(
-      dynamic value,
-      ) {
-    if (value is! List) {
-      return [];
-    }
-
-    final result =
-    <String>[];
-
-    for (final item
-    in value) {
-      if (item is! Map) {
-        continue;
-      }
-
-      final map =
-      Map<String, dynamic>.from(
-        item,
-      );
-
-      final title =
-      _firstText([
-        map['position'],
-        map['title'],
-        map['role'],
-      ]);
-
-      final company =
-      _firstText([
-        map['companyName'],
-        map['company'],
-      ]);
-
-      if (title != null &&
-          company != null) {
-        result.add(
-          '$title - $company',
-        );
-      } else if (title !=
-          null) {
-        result.add(title);
-      } else if (company !=
-          null) {
-        result.add(company);
-      }
-    }
-
-    return result;
-  }
-
-  List<String> _extractReasons(
-      dynamic value,
-      ) {
-    if (value is List) {
-      return value
-          .map(
-            (item) =>
-            item
-                .toString()
-                .trim(),
-      )
-          .where(
-            (item) =>
-        item.isNotEmpty,
-      )
-          .toList();
-    }
-
-    final single =
-    _text(value);
-
-    return single == null
-        ? []
-        : [single];
-  }
-
-  double? _matchScore(
-      Map<String, dynamic>?
-      match,
-      ) {
-    if (match == null) {
-      return null;
-    }
-
-    for (final key in [
-      'score',
-      'matchingScore',
-      'scoreMatching',
-      'percentage',
-      'matchPercentage',
-    ]) {
-      final value =
-      match[key];
-
-      if (value is num) {
-        final score =
-        value.toDouble();
-
-        return score <= 1
-            ? score * 100
-            : score;
-      }
-
-      final parsed =
-      double.tryParse(
-        value?.toString() ?? '',
-      );
-
-      if (parsed != null) {
-        return parsed <= 1
-            ? parsed * 100
-            : parsed;
-      }
-    }
-
-    return null;
-  }
-}
-
-class _ProfileHeader
-    extends StatelessWidget {
-  const _ProfileHeader({
-    required this.name,
-    required this.email,
-    required this.status,
-  });
-
-  final String name;
-  final String? email;
-  final String status;
-
-  @override
-  Widget build(
-      BuildContext context,
-      ) {
-    final color =
-    _statusColor(
-      status,
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
     );
+  }
+
+  Widget _statusBadge(String status) {
+    final (label, color) = switch (status) {
+      'REVIEWING' => ('Đang xem xét', const Color(0xFFF59E0B)),
+      'ACCEPTED' => ('Đã nhận', const Color(0xFF16A34A)),
+      'REJECTED' => ('Từ chối', const Color(0xFFDC2626)),
+      'WITHDRAWN' => ('Đã rút đơn', Colors.grey),
+      _ => ('Mới nộp', _primary),
+    };
 
     return Container(
-      padding:
-      const EdgeInsets.all(
-        18,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
       ),
-      decoration:
-      BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-        BorderRadius.circular(
-          20,
-        ),
-        border: Border.all(
-          color:
-          Colors.grey.shade200,
-        ),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor:
-            const Color(
-              0xFF2563EB,
-            ).withValues(
-              alpha: 0.10,
-            ),
-            child:
-            const Icon(
-              Icons.person_rounded,
-              color:
-              Color(
-                0xFF2563EB,
-              ),
-            ),
-          ),
-          const SizedBox(
-            width: 14,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
-              children: [
-                Text(
-                  name,
-                  style:
-                  const TextStyle(
-                    fontSize: 18,
-                    fontWeight:
-                    FontWeight
-                        .w800,
-                  ),
-                ),
-                if (email !=
-                    null) ...[
-                  const SizedBox(
-                    height: 4,
-                  ),
-                  Text(
-                    email!,
-                    style:
-                    TextStyle(
-                      color: Colors
-                          .grey
-                          .shade600,
-                    ),
-                  ),
-                ],
-                const SizedBox(
-                  height: 7,
-                ),
-                Container(
-                  padding:
-                  const EdgeInsets
-                      .symmetric(
-                    horizontal: 9,
-                    vertical: 5,
-                  ),
-                  decoration:
-                  BoxDecoration(
-                    color:
-                    color.withValues(
-                      alpha: 0.10,
-                    ),
-                    borderRadius:
-                    BorderRadius.circular(
-                      9,
-                    ),
-                  ),
-                  child: Text(
-                    _statusText(
-                      status,
-                    ),
-                    style:
-                    TextStyle(
-                      color: color,
-                      fontSize: 11,
-                      fontWeight:
-                      FontWeight
-                          .w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12),
       ),
     );
   }
 
-  static String _statusText(
-      String status,
-      ) {
-    switch (status) {
-      case 'REVIEWING':
-        return 'Đang xem xét';
-      case 'ACCEPTED':
-        return 'Đã chấp nhận';
-      case 'REJECTED':
-        return 'Đã từ chối';
-      case 'WITHDRAWN':
-        return 'Đã rút đơn';
-      default:
-        return 'Mới ứng tuyển';
+  String _dayString(String day) {
+    switch (day) {
+      case 'MONDAY': return 'Thứ 2';
+      case 'TUESDAY': return 'Thứ 3';
+      case 'WEDNESDAY': return 'Thứ 4';
+      case 'THURSDAY': return 'Thứ 5';
+      case 'FRIDAY': return 'Thứ 6';
+      case 'SATURDAY': return 'Thứ 7';
+      case 'SUNDAY': return 'Chủ nhật';
+      default: return day;
     }
   }
 
-  static Color _statusColor(
-      String status,
-      ) {
-    switch (status) {
-      case 'REVIEWING':
-        return const Color(
-          0xFFF59E0B,
-        );
-      case 'ACCEPTED':
-        return const Color(
-          0xFF16A34A,
-        );
-      case 'REJECTED':
-        return const Color(
-          0xFFDC2626,
-        );
-      case 'WITHDRAWN':
-        return Colors.grey;
-      default:
-        return const Color(
-          0xFF2563EB,
-        );
-    }
-  }
-}
-
-class _CardSection
-    extends StatelessWidget {
-  const _CardSection({
-    required this.title,
-    required this.children,
-  });
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(
-      BuildContext context,
-      ) {
-    return Container(
-      width:
-      double.infinity,
-      padding:
-      const EdgeInsets.all(
-        17,
-      ),
-      decoration:
-      BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-        BorderRadius.circular(
-          20,
-        ),
-        border: Border.all(
-          color:
-          Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style:
-            const TextStyle(
-              fontSize: 16,
-              fontWeight:
-              FontWeight.w800,
-            ),
-          ),
-          const SizedBox(
-            height: 14,
-          ),
-          ...children,
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoRow
-    extends StatelessWidget {
-  const _InfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(
-      BuildContext context,
-      ) {
-    return Padding(
-      padding:
-      const EdgeInsets.only(
-        bottom: 12,
-      ),
-      child: Row(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 19,
-            color:
-            const Color(
-              0xFF64748B,
-            ),
-          ),
-          const SizedBox(
-            width: 10,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style:
-                  TextStyle(
-                    fontSize: 11.5,
-                    color: Colors
-                        .grey
-                        .shade600,
-                  ),
-                ),
-                const SizedBox(
-                  height: 2,
-                ),
-                Text(
-                  value,
-                  style:
-                  const TextStyle(
-                    fontSize: 13.5,
-                    fontWeight:
-                    FontWeight
-                        .w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActionBar
-    extends StatelessWidget {
-  const _ActionBar({
-    required this.child,
-  });
-
-  final Widget child;
-
-  @override
-  Widget build(
-      BuildContext context,
-      ) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding:
-        const EdgeInsets.fromLTRB(
-          18,
-          10,
-          18,
-          12,
-        ),
-        decoration:
-        BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color:
-              Colors.black.withValues(
-                alpha: 0.06,
-              ),
-              blurRadius: 14,
-              offset:
-              const Offset(
-                0,
-                -4,
-              ),
-            ),
-          ],
-        ),
-        child: child,
-      ),
-    );
+  String _formatTime(dynamic timeValue) {
+    if (timeValue == null) return '';
+    final text = timeValue.toString();
+    final match = RegExp(r'T?(\d{2}:\d{2})').firstMatch(text);
+    return match != null ? match.group(1)! : text;
   }
 }
