@@ -13,6 +13,7 @@ import { AppointmentsService } from './appointments.service.js';
 
 import { CreateWorkAppointmentDto } from './dto/create-work-appointment.dto.js';
 import { UpdateWorkAppointmentDto } from './dto/update-work-appointment.dto.js';
+import { ConfirmWorkAppointmentDto } from './dto/confirm-work-appointment.dto.js';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -138,10 +139,14 @@ export class AppointmentsController {
       ParseUUIDPipe,
     )
     id: string,
+
+    @Body()
+    dto: ConfirmWorkAppointmentDto,
   ) {
     return this.appointmentsService.confirmAppointment(
       user.sub,
       id,
+      dto,
     );
   }
 

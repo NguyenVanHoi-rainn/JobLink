@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -9,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 import { CreateWorkAppointmentDto } from './dto/create-work-appointment.dto.js';
 import { UpdateWorkAppointmentDto } from './dto/update-work-appointment.dto.js';
+import { ConfirmWorkAppointmentDto } from './dto/confirm-work-appointment.dto.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 @Injectable()
@@ -212,6 +214,15 @@ export class AppointmentsService {
     });
 
     if (worker) {
+    const formattedDate = new Intl.DateTimeFormat('vi-VN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Ho_Chi_Minh',
+    }).format(appointmentDate);
+    const formattedShift = this.formatRecurringShift(
+      application.job,
+    );
+
     await this.safeNotify({
         userId:
         worker.userId,
@@ -220,7 +231,7 @@ export class AppointmentsService {
         'Bạn có lịch nhận việc mới',
 
         content:
-        `Nhà tuyển dụng đã tạo lịch nhận việc cho "${application.job.title}".`,
+        `Lịch nhận việc "${application.job.title}" lúc ${formattedDate} tại ${dto.location.trim()}.${formattedShift ? ` Ca định kỳ: ${formattedShift}.` : ''}`,
 
         type:
         'APPOINTMENT_CREATED',
@@ -411,6 +422,7 @@ export class AppointmentsService {
   async confirmAppointment(
     workerUserId: string,
     appointmentId: string,
+    dto: ConfirmWorkAppointmentDto = {},
   ) {
     const worker =
       await this.getWorker(
@@ -454,6 +466,25 @@ export class AppointmentsService {
       throw new BadRequestException(
         'Chỉ có thể xác nhận lịch đang PENDING',
       );
+    }
+
+    const conflictingSchedules =
+      await this.findScheduleConflicts(
+        worker.id,
+        appointment.application.job,
+        appointmentId,
+      );
+
+    if (
+      conflictingSchedules.length > 0 &&
+      !dto.ignoreScheduleConflict
+    ) {
+      throw new ConflictException({
+        message:
+          'Lịch làm việc này trùng với ca bạn đã xác nhận.',
+        code: 'WORK_SCHEDULE_CONFLICT',
+        conflicts: conflictingSchedules,
+      });
     }
 
     const updated =
@@ -504,6 +535,185 @@ export class AppointmentsService {
 
     return updated;
 
+  }
+
+  private async findScheduleConflicts(
+    workerId: string,
+    targetJob: {
+      id: string;
+      title: string;
+      workDays: string[];
+      startTime: Date | null;
+      endTime: Date | null;
+    },
+    appointmentId: string,
+  ) {
+    const targetShifts = this.expandWeeklyShift(targetJob);
+    if (targetShifts.length === 0) {
+      return [];
+    }
+
+    const existingAppointments =
+      await this.prisma.workAppointment.findMany({
+        where: {
+          id: { not: appointmentId },
+          status: 'CONFIRMED',
+          application: {
+            workerId,
+            status: 'ACCEPTED',
+          },
+        },
+        select: {
+          id: true,
+          application: {
+            select: {
+              job: {
+                select: {
+                  id: true,
+                  title: true,
+                  workDays: true,
+                  startTime: true,
+                  endTime: true,
+                  employer: {
+                    select: {
+                      companyName: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+    const conflicts = new Map<string, {
+      appointmentId: string;
+      jobTitle: string;
+      companyName: string;
+      day: string;
+      startTime: string;
+      endTime: string;
+    }>();
+
+    for (const existing of existingAppointments) {
+      const job = existing.application.job;
+      const existingShifts = this.expandWeeklyShift(job);
+
+      for (const target of targetShifts) {
+        for (const current of existingShifts) {
+          if (
+            target.day === current.day &&
+            target.start < current.end &&
+            current.start < target.end
+          ) {
+            conflicts.set(
+              `${existing.id}:${target.day}`,
+              {
+                appointmentId: existing.id,
+                jobTitle: job.title,
+                companyName: job.employer.companyName,
+                day: target.day,
+                startTime: this.formatMinutes(current.start),
+                endTime: this.formatMinutes(current.end),
+              },
+            );
+          }
+        }
+      }
+    }
+
+    return [...conflicts.values()];
+  }
+
+  private expandWeeklyShift(job: {
+    workDays: string[];
+    startTime: Date | null;
+    endTime: Date | null;
+  }) {
+    if (
+      !job.startTime ||
+      !job.endTime ||
+      job.workDays.length === 0
+    ) {
+      return [];
+    }
+
+    const start = this.minutesOfDay(job.startTime);
+    const end = this.minutesOfDay(job.endTime);
+
+    if (start === end) {
+      return [];
+    }
+
+    const days = [
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+      'SUNDAY',
+    ];
+
+    return job.workDays.flatMap((day) => {
+      const dayIndex = days.indexOf(day);
+      if (dayIndex < 0) {
+        return [];
+      }
+
+      if (end > start) {
+        return [{ day, start, end }];
+      }
+
+      const nextDay = days[(dayIndex + 1) % days.length];
+      return [
+        { day, start, end: 1440 },
+        { day: nextDay, start: 0, end },
+      ];
+    });
+  }
+
+  private minutesOfDay(value: Date) {
+    return value.getUTCHours() * 60 + value.getUTCMinutes();
+  }
+
+  private formatMinutes(minutes: number) {
+    const normalized = minutes % 1440;
+    const hours = Math.floor(normalized / 60);
+    const mins = normalized % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins
+      .toString()
+      .padStart(2, '0')}`;
+  }
+
+  private formatRecurringShift(job: {
+    workDays: string[];
+    startTime: Date | null;
+    endTime: Date | null;
+  }) {
+    if (!job.startTime || !job.endTime || job.workDays.length === 0) {
+      return '';
+    }
+
+    const dayLabels: Record<string, string> = {
+      MONDAY: 'Thứ 2',
+      TUESDAY: 'Thứ 3',
+      WEDNESDAY: 'Thứ 4',
+      THURSDAY: 'Thứ 5',
+      FRIDAY: 'Thứ 6',
+      SATURDAY: 'Thứ 7',
+      SUNDAY: 'Chủ nhật',
+    };
+    const days = job.workDays
+      .map((day) => dayLabels[day])
+      .filter((day): day is string => Boolean(day))
+      .join(', ');
+
+    if (!days) {
+      return '';
+    }
+
+    return `${days}, ${this.formatMinutes(this.minutesOfDay(job.startTime))} - ${this.formatMinutes(this.minutesOfDay(job.endTime))}`;
   }
 
   async declineAppointment(

@@ -75,6 +75,23 @@ class WorkerProfileService {
         .toList();
   }
 
+  Future<void> uploadCv(String path, String fileName) async {
+    if (path.isEmpty) {
+      throw StateError('Không đọc được file CV đã chọn');
+    }
+
+    await _dio.post(
+      '/workers/me/cvs',
+      data: FormData.fromMap({
+        'file': await MultipartFile.fromFile(path, filename: fileName),
+      }),
+    );
+  }
+
+  Future<void> deleteCv(String cvId) async {
+    await _dio.delete('/workers/me/cvs/$cvId');
+  }
+
   String? _nullableText(String? value) {
     if (value == null) {
       return null;

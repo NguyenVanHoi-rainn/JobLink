@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
@@ -46,6 +47,8 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
 
   bool _loading = true;
   bool _saving = false;
+  bool _isEditing = false;
+  bool _uploadingCv = false;
 
   String _skillSearch = '';
 
@@ -70,7 +73,7 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
     super.dispose();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool preserveEdits = false}) async {
     setState(() {
       _loading = true;
       _error = null;
@@ -93,7 +96,9 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
 
       final skills = results[2] as List<WorkerOption>;
 
-      _applyProfile(profile);
+      if (!preserveEdits) {
+        _applyProfile(profile);
+      }
 
       setState(() {
         _profile = profile;
@@ -242,6 +247,9 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
             ? 'Đã lưu hồ sơ. AI đã sẵn sàng.'
             : 'Đã lưu hồ sơ.',
       );
+      setState(() {
+        _isEditing = false;
+      });
     } catch (e) {
       _showMessage(_friendlyError(e));
     } finally {
@@ -250,6 +258,83 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
           _saving = false;
         });
       }
+    }
+  }
+
+  void _cancelEditing() {
+    final profile = _profile;
+    if (profile != null) {
+      _applyProfile(profile);
+    }
+    setState(() {
+      _isEditing = false;
+    });
+  }
+
+  Future<void> _uploadCv() async {
+    if (_uploadingCv) return;
+
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+    );
+    if (file == null) return;
+
+    final filePath = file.path;
+    if (filePath == null) {
+      _showMessage('Không thể đọc file CV đã chọn.');
+      return;
+    }
+
+    final fileSize = file.lengthSync() ?? await file.length();
+    if (fileSize == null) {
+      _showMessage('Không thể xác định dung lượng file CV.');
+      return;
+    }
+    if (fileSize > 5 * 1024 * 1024) {
+      _showMessage('CV không được vượt quá 5 MB.');
+      return;
+    }
+
+    setState(() => _uploadingCv = true);
+    try {
+      await _service.uploadCv(filePath, file.name);
+      await _loadData(preserveEdits: _isEditing);
+      if (mounted) _showMessage('Đã tải CV lên thành công.');
+    } catch (error) {
+      if (mounted) _showMessage(_friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _uploadingCv = false);
+    }
+  }
+
+  Future<void> _deleteCv(WorkerCv cv) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xóa CV?'),
+        content: Text('Bạn có chắc muốn xóa "${cv.fileName}" khỏi hồ sơ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Giữ lại'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Xóa CV'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _service.deleteCv(cv.id);
+      await _loadData(preserveEdits: _isEditing);
+      if (mounted) _showMessage('Đã xóa CV.');
+    } catch (error) {
+      if (mounted) _showMessage(_friendlyError(error));
     }
   }
 
@@ -276,7 +361,7 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
     }
 
     return RefreshIndicator(
-      onRefresh: _loadData,
+      onRefresh: _isEditing ? () async {} : _loadData,
 
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
@@ -290,363 +375,578 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
 
           const SizedBox(height: 22),
 
-          _ProfileSection(
-            title: 'Thông tin cá nhân',
+          if (_isEditing) ...[
+            _ProfileSection(
+              title: 'Thông tin cá nhân',
 
-            icon: Icons.person_outline_rounded,
+              icon: Icons.person_outline_rounded,
 
-            child: Column(
-              children: [
-                TextField(
-                  controller: _fullNameController,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _fullNameController,
 
-                  decoration: const InputDecoration(
-                    labelText: 'Họ và tên',
+                    decoration: const InputDecoration(
+                      labelText: 'Họ và tên',
 
-                    prefixIcon: Icon(Icons.badge_outlined),
+                      prefixIcon: Icon(Icons.badge_outlined),
 
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                TextField(
-                  controller: _phoneController,
-
-                  keyboardType: TextInputType.phone,
-
-                  decoration: const InputDecoration(
-                    labelText: 'Số điện thoại',
-
-                    prefixIcon: Icon(Icons.phone_outlined),
-
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                TextField(
-                  controller: _bioController,
-
-                  maxLines: 4,
-
-                  decoration: const InputDecoration(
-                    labelText: 'Giới thiệu bản thân',
-
-                    hintText: 'Ví dụ: Sinh viên, có kinh nghiệm bán hàng...',
-
-                    alignLabelWithHint: true,
-
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 18),
-
-          _ProfileSection(
-            title: 'Lĩnh vực quan tâm',
-
-            icon: Icons.grid_view_rounded,
-
-            subtitle: 'AI dùng lĩnh vực để ưu tiên loại công việc phù hợp.',
-
-            child: Wrap(
-              spacing: 8,
-
-              runSpacing: 8,
-
-              children: _categories.map((category) {
-                final selected = _selectedCategoryIds.contains(category.id);
-
-                return FilterChip(
-                  label: Text(category.name),
-
-                  selected: selected,
-
-                  onSelected: (value) {
-                    setState(() {
-                      if (value) {
-                        _selectedCategoryIds.add(category.id);
-                      } else {
-                        _selectedCategoryIds.remove(category.id);
-                      }
-                    });
-                  },
-                );
-              }).toList(),
-            ),
-          ),
-
-          const SizedBox(height: 18),
-
-          _ProfileSection(
-            title: 'Kỹ năng',
-
-            icon: Icons.psychology_outlined,
-
-            subtitle: 'Chọn những kỹ năng bạn thực sự có.',
-
-            child: Column(
-              children: [
-                TextField(
-                  controller: _skillSearchController,
-
-                  onChanged: (value) {
-                    setState(() {
-                      _skillSearch = value.trim();
-                    });
-                  },
-
-                  decoration: const InputDecoration(
-                    hintText: 'Tìm kỹ năng...',
-
-                    prefixIcon: Icon(Icons.search_rounded),
-
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                Align(
-                  alignment: Alignment.centerLeft,
-
-                  child: Wrap(
-                    spacing: 8,
-
-                    runSpacing: 8,
-
-                    children: _visibleSkills.map((skill) {
-                      final selected = _selectedSkillIds.contains(skill.id);
-
-                      return FilterChip(
-                        label: Text(skill.name),
-
-                        selected: selected,
-
-                        onSelected: (value) {
-                          setState(() {
-                            if (value) {
-                              _selectedSkillIds.add(skill.id);
-                            } else {
-                              _selectedSkillIds.remove(skill.id);
-                            }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ),
-
-                if (_visibleSkills.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-
-                    child: Text(
-                      'Không tìm thấy kỹ năng.',
-
-                      style: TextStyle(color: Colors.grey.shade600),
+                      border: OutlineInputBorder(),
                     ),
                   ),
-              ],
-            ),
-          ),
 
-          const SizedBox(height: 18),
+                  const SizedBox(height: 14),
 
-          _ProfileSection(
-            title: 'Khu vực muốn làm',
+                  TextField(
+                    controller: _phoneController,
 
-            icon: Icons.location_on_outlined,
+                    keyboardType: TextInputType.phone,
 
-            subtitle: 'Bạn có thể nhập quận, thành phố hoặc khu vực mong muốn.',
+                    decoration: const InputDecoration(
+                      labelText: 'Số điện thoại',
 
-            child: Column(
-              children: [
-                TextField(
-                  controller: _searchAreaController,
+                      prefixIcon: Icon(Icons.phone_outlined),
 
-                  decoration: const InputDecoration(
-                    labelText: 'Khu vực tìm việc',
-
-                    hintText: 'Ví dụ: Thủ Dầu Một, Bình Dương',
-
-                    prefixIcon: Icon(Icons.map_outlined),
-
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                DropdownButtonFormField<int>(
-                  initialValue: _maxDistanceKm,
-
-                  decoration: const InputDecoration(
-                    labelText: 'Khoảng cách mong muốn',
-
-                    prefixIcon: Icon(Icons.near_me_outlined),
-
-                    border: OutlineInputBorder(),
-                  ),
-
-                  items: const [
-                    DropdownMenuItem(value: 1, child: Text('Trong 1 km')),
-
-                    DropdownMenuItem(value: 3, child: Text('Trong 3 km')),
-
-                    DropdownMenuItem(value: 5, child: Text('Trong 5 km')),
-
-                    DropdownMenuItem(value: 10, child: Text('Trong 10 km')),
-
-                    DropdownMenuItem(value: 20, child: Text('Trong 20 km')),
-
-                    DropdownMenuItem(value: 50, child: Text('Trong 50 km')),
-                  ],
-
-                  onChanged: (value) {
-                    setState(() {
-                      _maxDistanceKm = value;
-                    });
-                  },
-                ),
-
-                const SizedBox(height: 10),
-
-                Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-
-                      size: 16,
-
-                      color: Colors.grey.shade500,
+                      border: OutlineInputBorder(),
                     ),
+                  ),
 
-                    const SizedBox(width: 6),
+                  const SizedBox(height: 14),
 
-                    Expanded(
+                  TextField(
+                    controller: _bioController,
+
+                    maxLines: 4,
+
+                    decoration: const InputDecoration(
+                      labelText: 'Giới thiệu bản thân',
+
+                      hintText: 'Ví dụ: Sinh viên, có kinh nghiệm bán hàng...',
+
+                      alignLabelWithHint: true,
+
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 18),
+
+            _ProfileSection(
+              title: 'Lĩnh vực quan tâm',
+
+              icon: Icons.grid_view_rounded,
+
+              subtitle: 'AI dùng lĩnh vực để ưu tiên loại công việc phù hợp.',
+
+              child: Wrap(
+                spacing: 8,
+
+                runSpacing: 8,
+
+                children: _categories.map((category) {
+                  final selected = _selectedCategoryIds.contains(category.id);
+
+                  return FilterChip(
+                    label: Text(category.name),
+
+                    selected: selected,
+
+                    onSelected: (value) {
+                      setState(() {
+                        if (value) {
+                          _selectedCategoryIds.add(category.id);
+                        } else {
+                          _selectedCategoryIds.remove(category.id);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+
+            const SizedBox(height: 18),
+
+            _ProfileSection(
+              title: 'Kỹ năng',
+
+              icon: Icons.psychology_outlined,
+
+              subtitle: 'Chọn những kỹ năng bạn thực sự có.',
+
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _skillSearchController,
+
+                    onChanged: (value) {
+                      setState(() {
+                        _skillSearch = value.trim();
+                      });
+                    },
+
+                    decoration: const InputDecoration(
+                      hintText: 'Tìm kỹ năng...',
+
+                      prefixIcon: Icon(Icons.search_rounded),
+
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Align(
+                    alignment: Alignment.centerLeft,
+
+                    child: Wrap(
+                      spacing: 8,
+
+                      runSpacing: 8,
+
+                      children: _visibleSkills.map((skill) {
+                        final selected = _selectedSkillIds.contains(skill.id);
+
+                        return FilterChip(
+                          label: Text(skill.name),
+
+                          selected: selected,
+
+                          onSelected: (value) {
+                            setState(() {
+                              if (value) {
+                                _selectedSkillIds.add(skill.id);
+                              } else {
+                                _selectedSkillIds.remove(skill.id);
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ),
+
+                  if (_visibleSkills.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+
                       child: Text(
-                        'Lọc chính xác theo km sẽ dùng tọa độ khi tích hợp Google Maps/GPS.',
+                        'Không tìm thấy kỹ năng.',
 
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-
-                          fontSize: 11.5,
-                        ),
+                        style: TextStyle(color: Colors.grey.shade600),
                       ),
                     ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
-          const SizedBox(height: 18),
+            const SizedBox(height: 18),
 
-          _ProfileSection(
-            title: 'Mức lương mong muốn',
+            _ProfileSection(
+              title: 'Khu vực muốn làm',
 
-            icon: Icons.payments_outlined,
+              icon: Icons.location_on_outlined,
 
-            child: Column(
-              children: [
-                TextField(
-                  controller: _salaryController,
+              subtitle:
+                  'Bạn có thể nhập quận, thành phố hoặc khu vực mong muốn.',
 
-                  keyboardType: TextInputType.number,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchAreaController,
 
-                  decoration: const InputDecoration(
-                    labelText: 'Mức tối thiểu',
+                    decoration: const InputDecoration(
+                      labelText: 'Khu vực tìm việc',
 
-                    hintText: 'Ví dụ: 30000',
+                      hintText: 'Ví dụ: Thủ Dầu Một, Bình Dương',
 
-                    prefixIcon: Icon(Icons.payments_outlined),
+                      prefixIcon: Icon(Icons.map_outlined),
 
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                DropdownButtonFormField<String>(
-                  initialValue: _preferredSalaryType,
-
-                  decoration: const InputDecoration(
-                    labelText: 'Đơn vị lương',
-
-                    border: OutlineInputBorder(),
+                      border: OutlineInputBorder(),
+                    ),
                   ),
 
-                  items: const [
-                    DropdownMenuItem(value: 'HOURLY', child: Text('Theo giờ')),
+                  const SizedBox(height: 14),
 
-                    DropdownMenuItem(value: 'DAILY', child: Text('Theo ngày')),
+                  DropdownButtonFormField<int>(
+                    initialValue: _maxDistanceKm,
 
-                    DropdownMenuItem(value: 'SHIFT', child: Text('Theo ca')),
+                    decoration: const InputDecoration(
+                      labelText: 'Khoảng cách mong muốn',
 
-                    DropdownMenuItem(
-                      value: 'MONTHLY',
-                      child: Text('Theo tháng'),
+                      prefixIcon: Icon(Icons.near_me_outlined),
+
+                      border: OutlineInputBorder(),
                     ),
 
-                    DropdownMenuItem(
-                      value: 'FIXED',
-                      child: Text('Trọn công việc'),
-                    ),
-                  ],
+                    items: const [
+                      DropdownMenuItem(value: 1, child: Text('Trong 1 km')),
 
-                  onChanged: (value) {
-                    setState(() {
-                      _preferredSalaryType = value;
-                    });
-                  },
-                ),
-              ],
+                      DropdownMenuItem(value: 3, child: Text('Trong 3 km')),
+
+                      DropdownMenuItem(value: 5, child: Text('Trong 5 km')),
+
+                      DropdownMenuItem(value: 10, child: Text('Trong 10 km')),
+
+                      DropdownMenuItem(value: 20, child: Text('Trong 20 km')),
+
+                      DropdownMenuItem(value: 50, child: Text('Trong 50 km')),
+                    ],
+
+                    onChanged: (value) {
+                      setState(() {
+                        _maxDistanceKm = value;
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+
+                        size: 16,
+
+                        color: Colors.grey.shade500,
+                      ),
+
+                      const SizedBox(width: 6),
+
+                      Expanded(
+                        child: Text(
+                          'Lọc chính xác theo km sẽ dùng tọa độ khi tích hợp Google Maps/GPS.',
+
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          const SizedBox(height: 18),
+            const SizedBox(height: 18),
 
-          _buildAvailabilitySection(),
+            _ProfileSection(
+              title: 'Mức lương mong muốn',
+
+              icon: Icons.payments_outlined,
+
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _salaryController,
+
+                    keyboardType: TextInputType.number,
+
+                    decoration: const InputDecoration(
+                      labelText: 'Mức tối thiểu',
+
+                      hintText: 'Ví dụ: 30000',
+
+                      prefixIcon: Icon(Icons.payments_outlined),
+
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  DropdownButtonFormField<String>(
+                    initialValue: _preferredSalaryType,
+
+                    decoration: const InputDecoration(
+                      labelText: 'Đơn vị lương',
+
+                      border: OutlineInputBorder(),
+                    ),
+
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'HOURLY',
+                        child: Text('Theo giờ'),
+                      ),
+
+                      DropdownMenuItem(
+                        value: 'DAILY',
+                        child: Text('Theo ngày'),
+                      ),
+
+                      DropdownMenuItem(value: 'SHIFT', child: Text('Theo ca')),
+
+                      DropdownMenuItem(
+                        value: 'MONTHLY',
+                        child: Text('Theo tháng'),
+                      ),
+
+                      DropdownMenuItem(
+                        value: 'FIXED',
+                        child: Text('Trọn công việc'),
+                      ),
+                    ],
+
+                    onChanged: (value) {
+                      setState(() {
+                        _preferredSalaryType = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 18),
+
+            _buildAvailabilitySection(),
+
+            const SizedBox(height: 18),
+
+            SizedBox(
+              height: 54,
+
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _save,
+
+                icon: _saving
+                    ? const SizedBox(
+                        width: 18,
+
+                        height: 18,
+
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save_rounded),
+
+                label: Text(_saving ? 'Đang lưu...' : 'Lưu hồ sơ'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _saving ? null : _cancelEditing,
+              child: const Text('Hủy thay đổi'),
+            ),
+          ] else ...[
+            _buildOverview(profile),
+          ],
 
           const SizedBox(height: 18),
 
           _buildCvSection(profile),
-
-          const SizedBox(height: 24),
-
-          SizedBox(
-            height: 54,
-
-            child: FilledButton.icon(
-              onPressed: _saving ? null : _save,
-
-              icon: _saving
-                  ? const SizedBox(
-                      width: 18,
-
-                      height: 18,
-
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.save_rounded),
-
-              label: Text(_saving ? 'Đang lưu...' : 'Lưu hồ sơ'),
-            ),
-          ),
         ],
       ),
     );
+  }
+
+  Widget _buildOverview(WorkerProfile profile) {
+    final availability = profile.availabilities;
+    final salary = profile.preferredMinSalary == null
+        ? 'Chưa thiết lập'
+        : '${profile.preferredMinSalary!.round()} đ ${_salaryTypeText(profile.preferredSalaryType)}';
+
+    return Column(
+      children: [
+        _ProfileSection(
+          title: 'Thông tin cá nhân',
+          icon: Icons.person_outline_rounded,
+          child: Column(
+            children: [
+              _SummaryRow(
+                icon: Icons.badge_outlined,
+                label: 'Họ và tên',
+                value: _summaryText(profile.fullName),
+              ),
+              const SizedBox(height: 13),
+              _SummaryRow(
+                icon: Icons.email_outlined,
+                label: 'Email',
+                value: profile.email,
+              ),
+              const SizedBox(height: 13),
+              _SummaryRow(
+                icon: Icons.phone_outlined,
+                label: 'Số điện thoại',
+                value: _summaryText(profile.phone),
+              ),
+              if (profile.bio?.isNotEmpty == true) ...[
+                const SizedBox(height: 13),
+                _SummaryRow(
+                  icon: Icons.notes_rounded,
+                  label: 'Giới thiệu',
+                  value: profile.bio!,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _ProfileSection(
+          title: 'Mong muốn công việc',
+          icon: Icons.track_changes_rounded,
+          child: Column(
+            children: [
+              _SummaryRow(
+                icon: Icons.location_on_outlined,
+                label: 'Khu vực',
+                value: _summaryText(profile.searchArea),
+              ),
+              const SizedBox(height: 13),
+              _SummaryRow(
+                icon: Icons.near_me_outlined,
+                label: 'Khoảng cách',
+                value: profile.maxDistanceKm == null
+                    ? 'Chưa thiết lập'
+                    : 'Trong ${profile.maxDistanceKm} km',
+              ),
+              const SizedBox(height: 13),
+              _SummaryRow(
+                icon: Icons.payments_outlined,
+                label: 'Mức lương tối thiểu',
+                value: salary,
+              ),
+              const SizedBox(height: 16),
+              _buildSummaryTags(
+                'Lĩnh vực quan tâm',
+                profile.categories.map((item) => item.name).toList(),
+                Icons.grid_view_rounded,
+              ),
+              const SizedBox(height: 14),
+              _buildSummaryTags(
+                'Kỹ năng',
+                profile.skills.map((item) => item.name).toList(),
+                Icons.psychology_outlined,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _ProfileSection(
+          title: 'Lịch rảnh',
+          icon: Icons.calendar_month_outlined,
+          subtitle: 'Nhà tuyển dụng có thể tham khảo khung giờ bạn có thể làm.',
+          child: availability.isEmpty
+              ? const _ProfileEmptyMessage(
+                  text:
+                      'Chưa thiết lập lịch rảnh. Nhấn “Sửa” để thêm ngày và giờ.',
+                )
+              : Column(
+                  children: availability.map((item) {
+                    final day = _days[item.dayOfWeek] ?? item.dayOfWeek;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 11,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle_outline_rounded,
+                            color: Color(0xFF16A34A),
+                            size: 19,
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Text(
+                              day,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${item.startTime} - ${item.endTime}',
+                            style: const TextStyle(color: Color(0xFF475569)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryTags(String title, List<String> values, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 17, color: const Color(0xFF64748B)),
+            const SizedBox(width: 7),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Color(0xFF475569),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (values.isEmpty)
+          const _ProfileEmptyMessage(text: 'Chưa thiết lập')
+        else
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: values
+                  .map(
+                    (value) => Chip(
+                      label: Text(value),
+                      visualDensity: VisualDensity.compact,
+                      backgroundColor: const Color(0xFFEFF6FF),
+                      side: BorderSide.none,
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _summaryText(String? value) {
+    final text = value?.trim();
+    return text == null || text.isEmpty ? 'Chưa cập nhật' : text;
+  }
+
+  String _salaryTypeText(String? value) {
+    switch (value) {
+      case 'HOURLY':
+        return '/giờ';
+      case 'DAILY':
+        return '/ngày';
+      case 'SHIFT':
+        return '/ca';
+      case 'MONTHLY':
+        return '/tháng';
+      case 'FIXED':
+        return '/công việc';
+      default:
+        return '';
+    }
   }
 
   Widget _buildHeader(WorkerProfile profile) {
@@ -702,13 +1002,21 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
           ),
         ),
 
-        IconButton(
-          tooltip: 'Tải lại',
-
-          onPressed: _loadData,
-
-          icon: const Icon(Icons.refresh_rounded),
-        ),
+        if (_isEditing)
+          TextButton(
+            onPressed: _saving ? null : _cancelEditing,
+            child: const Text('Hủy'),
+          )
+        else
+          FilledButton.tonalIcon(
+            onPressed: () {
+              setState(() {
+                _isEditing = true;
+              });
+            },
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('Sửa'),
+          ),
       ],
     );
   }
@@ -970,53 +1278,73 @@ class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
   Widget _buildCvSection(WorkerProfile profile) {
     return _ProfileSection(
       title: 'CV',
-
       icon: Icons.description_outlined,
-
-      subtitle: 'CV không bắt buộc để sử dụng AI.',
-
-      child: profile.cvs.isEmpty
-          ? Container(
-              width: double.infinity,
-
-              padding: const EdgeInsets.all(18),
-
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-
-                borderRadius: BorderRadius.circular(14),
-              ),
-
-              child: Text(
-                'Bạn chưa tải CV lên.',
-
-                textAlign: TextAlign.center,
-
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            )
-          : Column(
-              children: profile.cvs.map((cv) {
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-
+      subtitle:
+          'PDF tối đa 5 MB. Bạn có thể quản lý CV độc lập với phần chỉnh sửa hồ sơ.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (profile.cvs.isEmpty)
+            const _ProfileEmptyMessage(text: 'Bạn chưa tải CV lên.')
+          else
+            ...profile.cvs.map(
+              (cv) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: ListTile(
                   leading: const CircleAvatar(
-                    child: Icon(Icons.description_outlined),
+                    backgroundColor: Color(0xFFEFF6FF),
+                    child: Icon(
+                      Icons.picture_as_pdf_outlined,
+                      color: Color(0xFF2563EB),
+                    ),
                   ),
-
                   title: Text(
                     cv.fileName,
-
                     maxLines: 1,
-
                     overflow: TextOverflow.ellipsis,
                   ),
-
-                  subtitle: const Text('CV đã tải lên'),
-                );
-              }).toList(),
+                  subtitle: Text(
+                    cv.uploadedAt == null
+                        ? 'CV đã tải lên'
+                        : 'Tải lên ${_formatDate(cv.uploadedAt!)}',
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Xóa CV',
+                    onPressed: () => _deleteCv(cv),
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ),
+              ),
             ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _uploadingCv ? null : _uploadCv,
+            icon: _uploadingCv
+                ? const SizedBox(
+                    width: 17,
+                    height: 17,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.upload_file_rounded),
+            label: Text(_uploadingCv ? 'Đang tải CV...' : 'Tải CV PDF lên'),
+          ),
+        ],
+      ),
     );
+  }
+
+  String _formatDate(DateTime value) {
+    final date = value.toLocal();
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
   }
 
   Widget _buildError() {
@@ -1256,6 +1584,71 @@ class _ProfileSection extends StatelessWidget {
 
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 19, color: const Color(0xFF64748B)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileEmptyMessage extends StatelessWidget {
+  const _ProfileEmptyMessage({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(color: Color(0xFF64748B), height: 1.4),
       ),
     );
   }

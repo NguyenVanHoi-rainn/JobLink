@@ -17,6 +17,7 @@ import 'worker_activity_screen.dart';
 import 'worker_messages_screen.dart';
 import 'worker_notifications_screen.dart';
 import 'worker_profile_screen.dart';
+import 'worker_schedule_screen.dart';
 
 // =======================================================
 // WORKER HOME SCREEN
@@ -38,6 +39,7 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
 
   int _currentIndex = 0;
   int _unreadMessageCount = 0;
+  int _scheduleRefreshTrigger = 0;
 
   @override
   void initState() {
@@ -74,7 +76,7 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
 
   void _openProfileTab() {
     setState(() {
-      _currentIndex = 3;
+      _currentIndex = 4;
     });
   }
 
@@ -84,6 +86,8 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
       _WorkerHomePage(onOpenProfile: _openProfileTab),
 
       const WorkerActivityScreen(),
+
+      WorkerScheduleScreen(refreshTrigger: _scheduleRefreshTrigger),
 
       WorkerMessagesScreen(onUnreadChanged: _updateUnreadMessageCount),
 
@@ -105,9 +109,12 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
         onDestinationSelected: (index) {
           setState(() {
             _currentIndex = index;
+            if (index == 2) {
+              _scheduleRefreshTrigger++;
+            }
           });
 
-          if (index == 2) {
+          if (index == 3) {
             _loadUnreadMessageCount();
           }
         },
@@ -123,6 +130,15 @@ class _WorkerHomeScreenState extends State<WorkerHomeScreen> {
             icon: Icon(Icons.work_outline_rounded),
             selectedIcon: Icon(Icons.work_rounded, color: primaryColor),
             label: 'Hoạt động',
+          ),
+
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(
+              Icons.calendar_month_rounded,
+              color: primaryColor,
+            ),
+            label: 'Lịch',
           ),
 
           NavigationDestination(
