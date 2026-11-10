@@ -6,7 +6,7 @@ export interface EmployerVerification {
   logoUrl?: string;
   taxCode?: string;
   businessLicense?: string;
-  verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  verificationStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
   rejectionReason?: string;
   user: {
     id: string;

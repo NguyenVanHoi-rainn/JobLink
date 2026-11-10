@@ -5,6 +5,12 @@ export interface LoginCredentials {
   password: string;
 }
 
+export interface AuthenticatedUser {
+  sub: string;
+  email: string;
+  role: 'WORKER' | 'EMPLOYER' | 'ADMIN';
+}
+
 export const authService = {
   login: async (credentials: LoginCredentials) => {
     const response = await api.post('/auth/login', credentials);
@@ -15,8 +21,13 @@ export const authService = {
     localStorage.removeItem('admin_token');
   },
 
-  getCurrentAdmin: async () => {
-    const response = await api.get('/auth/me');
+  getCurrentAdmin: async (token?: string): Promise<AuthenticatedUser> => {
+    const response = await api.get<AuthenticatedUser>(
+      '/auth/me',
+      token
+        ? { headers: { Authorization: `Bearer ${token}` } }
+        : undefined,
+    );
     return response.data;
   },
 };

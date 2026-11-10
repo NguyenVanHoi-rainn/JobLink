@@ -8,6 +8,7 @@ import { AdminUserSafetyController } from './admin-user-safety.controller.js';
 import { AdminUserSafetyService } from './admin-user-safety.service.js';
 import { AdminDashboardController } from './admin-dashboard.controller.js';
 import { AdminDashboardService } from './admin-dashboard.service.js';
+import { AdminJobsController } from './admin-jobs.controller.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AdminDashboardService } from './admin-dashboard.service.js';
     AdminController,
     AdminDashboardController,
     AdminUserSafetyController,
+    AdminJobsController,
   ],
 
   providers: [

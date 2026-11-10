@@ -5,6 +5,7 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -20,6 +21,7 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 
 import { RejectEmployerDto } from './dto/reject-employer.dto.js';
+import { EmployerVerificationQueryDto } from './dto/employer-verification-query.dto.js';
 
 @Controller('admin')
 @UseGuards(
@@ -33,8 +35,10 @@ export class AdminController {
   ) {}
 
   @Get('employer-verifications')
-  getPendingEmployerVerifications() {
-    return this.adminService.getPendingEmployerVerifications();
+  getPendingEmployerVerifications(
+    @Query() query: EmployerVerificationQueryDto,
+  ) {
+    return this.adminService.getPendingEmployerVerifications(query.status);
   }
 
   @Get('employer-verifications/:id')

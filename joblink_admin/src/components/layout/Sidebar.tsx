@@ -12,27 +12,20 @@ export const Sidebar: React.FC = () => {
   ];
 
   return (
-    <div style={{ width: '260px', background: '#1E293B', color: 'white', display: 'flex', flexDirection: 'column', height: '100vh', position: 'fixed', left: 0, top: 0 }}>
-      <div style={{ padding: '24px', fontSize: '20px', fontWeight: 800, borderBottom: '1px solid #334155' }}>
+    <aside className="admin-sidebar">
+      <div className="sidebar-brand">
         JobLink Admin
       </div>
 
-      <nav style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+      <nav className="sidebar-nav">
         {menuItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <Link
               key={item.path}
               to={item.path}
-              style={{
-                padding: '12px 16px',
-                borderRadius: '8px',
-                color: isActive ? 'white' : '#94A3B8',
-                background: isActive ? '#2563EB' : 'transparent',
-                textDecoration: 'none',
-                fontWeight: 600,
-                transition: 'all 0.2s',
-              }}
+              className={`sidebar-link${isActive ? ' sidebar-link-active' : ''}`}
+              title={item.label.replace(/^[^ ]+ /, '')}
             >
               {item.label}
             </Link>
@@ -40,17 +33,18 @@ export const Sidebar: React.FC = () => {
         })}
       </nav>
 
-      <div style={{ padding: '16px', borderTop: '1px solid #334155' }}>
+      <div className="sidebar-footer">
         <button
+          className="button button-danger"
+          title="Đăng xuất"
           onClick={() => {
             localStorage.removeItem('admin_token');
             window.location.href = '/login';
           }}
-          style={{ width: '100%', padding: '10px', background: '#DC2626', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
         >
           Đăng xuất
         </button>
       </div>
-    </div>
+    </aside>
   );
 };

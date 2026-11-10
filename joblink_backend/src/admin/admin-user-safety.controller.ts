@@ -1,12 +1,15 @@
 import {
   Controller,
+  Get,
   Param,
   ParseUUIDPipe,
   Patch,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
 import { AdminUserSafetyService } from './admin-user-safety.service.js';
+import { AdminUserSafetyQueryDto } from './dto/admin-user-safety-query.dto.js';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -25,6 +28,11 @@ export class AdminUserSafetyController {
     private readonly adminUserSafetyService:
       AdminUserSafetyService,
   ) {}
+
+  @Get()
+  listUsers(@Query() query: AdminUserSafetyQueryDto) {
+    return this.adminUserSafetyService.listUsers(query);
+  }
 
   @Patch(':id/lock')
   lockUser(

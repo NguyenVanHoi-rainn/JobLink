@@ -5,10 +5,10 @@ import { Header } from './Header';
 
 export const AdminLayout: React.FC = () => {
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5F7FB' }}>
+    <div className="admin-shell">
       <Sidebar />
 
-      <div style={{ marginLeft: '260px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div className="admin-main">
         <Header />
         <main style={{ flex: 1 }}>
           <Outlet />

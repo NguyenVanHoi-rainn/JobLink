@@ -1,81 +1,120 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { dashboardService } from '../../services/dashboardService';
 import { DashboardOverview } from '../../types/dashboard';
 
 export const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardOverview | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchOverview = async () => {
-      try {
-        setLoading(true);
-        const data = await dashboardService.getOverview();
-        setStats(data);
-      } catch (err: any) {
-        setError('Không thể tải dữ liệu thống kê từ hệ thống.');
-      } finally {
-        setLoading(false); 
-      }
-    };
-
-    fetchOverview();
+  const fetchOverview = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setStats(await dashboardService.getOverview());
+    } catch {
+      setError('Không thể tải dữ liệu thống kê. Hãy thử tải lại.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (loading) {
-    return <div style={{ padding: '24px', textAlign: 'center' }}>Đang tải số liệu thống kê...</div>;
-  }
+  useEffect(() => {
+    void fetchOverview();
+  }, [fetchOverview]);
 
-  if (error) {
-    return <div style={{ padding: '24px', color: 'red', textAlign: 'center' }}>{error}</div>;
-  }
+  const cards = stats
+    ? [
+        {
+          label: 'Người dùng',
+          value: stats.users.total,
+          note: `${stats.users.active} đang hoạt động · ${stats.users.locked} bị khóa`,
+          color: '#315bd6',
+        },
+        {
+          label: 'Hồ sơ chờ xác minh',
+          value: stats.employers.pendingVerifications,
+          note: 'Nhà tuyển dụng chờ duyệt',
+          color: '#d88716',
+        },
+        {
+          label: 'Tin tuyển dụng',
+          value: stats.jobs.total,
+          note: `${stats.jobs.published} đang hiển thị`,
+          color: '#14804a',
+        },
+        {
+          label: 'Đơn ứng tuyển',
+          value: stats.applications.total,
+          note: 'Tổng số đơn gửi đi',
+          color: '#7c52c5',
+        },
+        {
+          label: 'Báo cáo cần xử lý',
+          value: stats.reports.open + stats.reports.reviewing,
+          note: `${stats.reports.total} báo cáo tất cả`,
+          color: '#c13d4b',
+        },
+      ]
+    : [];
 
   return (
-    <div style={{ padding: '24px', backgroundColor: '#F5F7FB', minHeight: '100vh' }}>
-      <h2 style={{ marginBottom: '24px', color: '#1E293B', fontWeight: 800 }}>Tổng quan hệ thống (Dashboard)</h2>
+    <section className="admin-page">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">TỔNG QUAN</p>
+          <h1>Dashboard</h1>
+          <p className="page-description">Tình hình hoạt động hiện tại của JobLink.</p>
+        </div>
+        <button className="button button-secondary" onClick={() => void fetchOverview()} disabled={loading}>
+          {loading ? 'Đang cập nhật...' : 'Làm mới số liệu'}
+        </button>
+      </div>
+
+      {error && <div className="state-message state-error" role="alert">{error}</div>}
+      {loading && !stats && <div className="state-message">Đang tải số liệu thống kê...</div>}
 
       {stats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-          {/* Card Người dùng */}
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            <h4 style={{ color: '#64748B', marginBottom: '8px' }}>Tổng Người Dùng</h4>
-            
-            <p style={{ fontSize: '28px', fontWeight: 700, color: '#2563EB' }}>
-              {stats.users.workers + stats.users.employers}
-            </p>
-            
-            <div style={{ fontSize: '13px', color: '#64748B', marginTop: '8px' }}>
-              Worker: {stats.users.workers} | Employer: {stats.users.employers}
-            </div>
+        <>
+          <div className="stats-grid">
+            {cards.map((card) => (
+              <article className="stat-card" style={{ '--accent': card.color } as React.CSSProperties} key={card.label}>
+                <div className="stat-label">{card.label}</div>
+                <div className="stat-value">{card.value.toLocaleString('vi-VN')}</div>
+                <div className="stat-note">{card.note}</div>
+              </article>
+            ))}
           </div>
 
-          {/* Card Việc làm */}
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            <h4 style={{ color: '#64748B', marginBottom: '8px' }}>Tổng Tin Tuyển Dụng</h4>
-            <p style={{ fontSize: '28px', fontWeight: 700, color: '#16A34A' }}>{stats.jobs.total}</p>
-            <div style={{ fontSize: '13px', color: '#64748B', marginTop: '8px' }}>
-              Đang hiển thị: {stats.jobs.published}
-            </div>
-          </div>
+          <div className="dashboard-lower">
+            <section className="dashboard-panel">
+              <h2>Trạng thái hệ thống</h2>
+              <div className="breakdown-row"><span>Tài khoản đang hoạt động</span><strong>{stats.users.active}</strong></div>
+              <div className="breakdown-row"><span>Tài khoản bị khóa</span><strong>{stats.users.locked}</strong></div>
+              <div className="breakdown-row"><span>Tin bản nháp</span><strong>{stats.jobs.draft}</strong></div>
+              <div className="breakdown-row"><span>Tin đã đóng</span><strong>{stats.jobs.closed}</strong></div>
+              <div className="breakdown-row"><span>Tin đang ẩn</span><strong>{stats.jobs.hidden}</strong></div>
+              <div className="breakdown-row"><span>Lịch hẹn</span><strong>{stats.appointments.total}</strong></div>
+            </section>
 
-          {/* Card Đơn ứng tuyển */}
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            <h4 style={{ color: '#64748B', marginBottom: '8px' }}>Lượt Ứng Tuyển</h4>
-            <p style={{ fontSize: '28px', fontWeight: 700, color: '#D97706' }}>{stats.applications.total}</p>
-            <div style={{ fontSize: '13px', color: '#64748B', marginTop: '8px' }}>Tổng số đơn gửi đi</div>
+            <section className="dashboard-panel">
+              <h2>Truy cập nhanh</h2>
+              <div className="quick-links">
+                <Link className="quick-link" to="/employers">
+                  <span>Duyệt nhà tuyển dụng</span><strong>{stats.employers.pendingVerifications}</strong>
+                </Link>
+                <Link className="quick-link" to="/jobs">
+                  <span>Kiểm duyệt tin tuyển dụng</span><span>→</span>
+                </Link>
+                <Link className="quick-link" to="/users">
+                  <span>Quản lý người dùng</span><span>→</span>
+                </Link>
+              </div>
+            </section>
           </div>
-
-          {/* Card Báo cáo vi phạm */}
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            <h4 style={{ color: '#64748B', marginBottom: '8px' }}>Báo Cáo Vi Phạm</h4>
-            <p style={{ fontSize: '28px', fontWeight: 700, color: '#DC2626' }}>{stats.reports.total}</p>
-            <div style={{ fontSize: '13px', color: '#64748B', marginTop: '8px' }}>
-              Cần xử lý: {stats.reports.open}
-            </div>
-          </div>
-        </div>
+        </>
       )}
-    </div>
+    </section>
   );
 };

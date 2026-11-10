@@ -16,6 +16,7 @@ export class AdminDashboardService {
 
       totalWorkers,
       totalEmployers,
+      pendingEmployerVerifications,
 
       totalJobs,
       publishedJobs,
@@ -54,6 +55,12 @@ export class AdminDashboardService {
       this.prisma.user.count({
         where: {
           role: 'EMPLOYER',
+        },
+      }),
+
+      this.prisma.employerProfile.count({
+        where: {
+          verificationStatus: 'PENDING',
         },
       }),
 
@@ -110,6 +117,10 @@ export class AdminDashboardService {
 
         workers: totalWorkers,
         employers: totalEmployers,
+      },
+
+      employers: {
+        pendingVerifications: pendingEmployerVerifications,
       },
 
       jobs: {

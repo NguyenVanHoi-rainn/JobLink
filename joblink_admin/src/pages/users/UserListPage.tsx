@@ -1,116 +1,153 @@
-import React, { useEffect, useState } from 'react';
-import api from '../../services/api';
+import React, { useEffect, useMemo, useState } from 'react';
 import { userService } from '../../services/userService';
 import { User } from '../../types/user';
 
 export const UserListPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/admin/users'); 
-      setUsers(response.data.items || response.data);
-    } catch (err: any) {
-      setError('Không thể tải danh sách người dùng.');
+      setError(null);
+      setUsers(await userService.getUsers());
+    } catch {
+      setError('Không thể tải danh sách người dùng. Hãy thử tải lại.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
+    void fetchUsers();
   }, []);
+
+  const filteredUsers = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase();
+    return users.filter((user) => {
+      return (
+        (!term || user.email.toLocaleLowerCase().includes(term)) &&
+        (roleFilter === 'ALL' || user.role === roleFilter) &&
+        (statusFilter === 'ALL' || user.status === statusFilter)
+      );
+    });
+  }, [users, search, roleFilter, statusFilter]);
 
   const handleToggleLock = async (user: User) => {
     const isLocked = user.status === 'LOCKED';
     const actionName = isLocked ? 'mở khóa' : 'khóa';
-
-    if (!window.confirm(`Bạn có chắc chắn muốn ${actionName} tài khoản ${user.email}?`)) {
-      return;
-    }
+    if (!window.confirm(`Bạn có chắc chắn muốn ${actionName} tài khoản ${user.email}?`)) return;
 
     try {
+      setUpdatingUserId(user.id);
       if (isLocked) {
         await userService.unlockUser(user.id);
       } else {
         await userService.lockUser(user.id);
       }
-      fetchUsers(); 
-    } catch (err: any) {
-      alert(err.response?.data?.message || `Không thể ${actionName} tài khoản này.`);
+      await fetchUsers();
+    } catch {
+      setError(`Không thể ${actionName} tài khoản này.`);
+    } finally {
+      setUpdatingUserId(null);
     }
   };
 
-  if (loading) {
-    return <div style={{ padding: '24px', textAlign: 'center' }}>Đang tải danh sách người dùng...</div>;
-  }
-
-  if (error) {
-    return <div style={{ padding: '24px', color: 'red', textAlign: 'center' }}>{error}</div>;
-  }
-
   return (
-    <div style={{ padding: '24px', backgroundColor: '#F5F7FB', minHeight: '100vh' }}>
-      <h2 style={{ marginBottom: '24px', color: '#1E293B', fontWeight: 800 }}>Quản lý Người dùng</h2>
-
-      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead>
-            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#64748B', fontSize: '14px' }}>
-              <th style={{ padding: '16px' }}>Email</th>
-              <th style={{ padding: '16px' }}>Vai trò (Role)</th>
-              <th style={{ padding: '16px' }}>Trạng thái</th>
-              <th style={{ padding: '16px' }}>Ngày tạo</th>
-              <th style={{ padding: '16px', textAlign: 'center' }}>Hành động</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => {
-              const isLocked = user.status === 'LOCKED';
-              return (
-                <tr key={user.id} style={{ borderBottom: '1px solid #F1F5F9', fontSize: '14px', color: '#334155' }}>
-                  <td style={{ padding: '16px', fontWeight: 600 }}>{user.email}</td>
-                  <td style={{ padding: '16px' }}>{user.role}</td>
-                  <td style={{ padding: '16px' }}>
-                    <span style={{
-                      padding: '4px 10px',
-                      borderRadius: '20px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      background: isLocked ? '#FEE2E2' : '#DCFCE7',
-                      color: isLocked ? '#DC2626' : '#16A34A',
-                    }}>
-                      {user.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '16px' }}>{new Date(user.createdAt).toLocaleDateString()}</td>
-                  <td style={{ padding: '16px', textAlign: 'center' }}>
-                    {user.role !== 'ADMIN' && (
-                      <button
-                        onClick={() => handleToggleLock(user)}
-                        style={{
-                          padding: '6px 12px',
-                          background: isLocked ? '#16A34A' : '#DC2626',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {isLocked ? 'Mở khóa' : 'Khóa'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    <section className="admin-page">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">TÀI KHOẢN</p>
+          <h1>Quản lý người dùng</h1>
+          <p className="page-description">Tìm kiếm, lọc và quản lý trạng thái tài khoản.</p>
+        </div>
+        <button className="button button-secondary" onClick={() => void fetchUsers()} disabled={loading}>
+          {loading ? 'Đang tải...' : 'Làm mới'}
+        </button>
       </div>
-    </div>
+
+      <div className="filter-bar">
+        <input
+          aria-label="Tìm email"
+          placeholder="Tìm theo email..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <select aria-label="Lọc vai trò" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+          <option value="ALL">Tất cả vai trò</option>
+          <option value="WORKER">Worker</option>
+          <option value="EMPLOYER">Employer</option>
+          <option value="ADMIN">Admin</option>
+        </select>
+        <select aria-label="Lọc trạng thái" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <option value="ALL">Tất cả trạng thái</option>
+          <option value="ACTIVE">Hoạt động</option>
+          <option value="LOCKED">Đã khóa</option>
+        </select>
+        <span className="result-count">
+          {loading && users.length === 0 ? 'Đang tải...' : `${filteredUsers.length} tài khoản`}
+        </span>
+      </div>
+
+      {error && <div className="state-message state-error" role="alert">{error}</div>}
+      {loading && users.length === 0 && <div className="state-message">Đang tải danh sách người dùng...</div>}
+
+      {!loading && !error && filteredUsers.length === 0 && (
+        <div className="state-message">
+          {users.length === 0 ? 'Chưa có tài khoản người dùng.' : 'Không tìm thấy người dùng phù hợp.'}
+        </div>
+      )}
+
+      {filteredUsers.length > 0 && (
+        <div className="table-card">
+          <div className="table-scroll">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Vai trò</th>
+                  <th>Trạng thái</th>
+                  <th>Ngày tạo</th>
+                  <th>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map((user) => {
+                  const isLocked = user.status === 'LOCKED';
+                  return (
+                    <tr key={user.id}>
+                      <td className="cell-primary">{user.email}</td>
+                      <td>{user.role}</td>
+                      <td>
+                        <span className={`status-badge ${isLocked ? 'status-danger' : 'status-success'}`}>
+                          {isLocked ? 'Đã khóa' : 'Hoạt động'}
+                        </span>
+                      </td>
+                      <td>{new Date(user.createdAt).toLocaleDateString('vi-VN')}</td>
+                      <td>
+                        {user.role !== 'ADMIN' && (
+                          <button
+                            className={`button ${isLocked ? 'button-success' : 'button-danger'}`}
+                            disabled={updatingUserId === user.id}
+                            onClick={() => void handleToggleLock(user)}
+                          >
+                            {updatingUserId === user.id ? 'Đang cập nhật...' : isLocked ? 'Mở khóa' : 'Khóa'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
   );
 };

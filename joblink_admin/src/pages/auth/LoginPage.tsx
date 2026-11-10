@@ -13,12 +13,19 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    localStorage.removeItem('admin_token');
 
     try {
       const data = await authService.login({ email, password });
       
       const token = data.accessToken || data.access_token || data.token;
       if (token) {
+        const user = await authService.getCurrentAdmin(token);
+        if (user.role !== 'ADMIN') {
+          setError('Tài khoản không có quyền truy cập trang quản trị.');
+          return;
+        }
+
         localStorage.setItem('admin_token', token);
         navigate('/dashboard'); 
       } else {

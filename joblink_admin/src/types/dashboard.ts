@@ -6,6 +6,9 @@ export interface DashboardOverview {
     workers: number;
     employers: number;
   };
+  employers: {
+    pendingVerifications: number;
+  };
   jobs: {
     total: number;
     published: number;

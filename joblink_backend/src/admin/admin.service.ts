@@ -13,10 +13,12 @@ export class AdminService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async getPendingEmployerVerifications() {
+  async getPendingEmployerVerifications(
+    status?: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED',
+  ) {
     return this.prisma.employerProfile.findMany({
       where: {
-        verificationStatus: 'PENDING',
+        verificationStatus: status,
       },
 
       select: {
@@ -43,7 +45,7 @@ export class AdminService {
       },
 
       orderBy: {
-        id: 'desc',
+        createdAt: 'desc',
       },
     });
   }

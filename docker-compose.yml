@@ -46,7 +46,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
     networks:
       - joblink_network
 
@@ -60,7 +60,7 @@ services:
     container_name: joblink_backend
     restart: always
     environment:
-      DATABASE_URL: 'postgresql://joblink_user:joblink_password@postgres:5432/joblink_db?schema=public'
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the root .env file}
       AI_SERVICE_URL: 'http://ai_service:8000'
       PORT: 3000
       JWT_SECRET: 'joblink_super_secret_key_2026'
@@ -73,7 +73,7 @@ services:
       postgres:
         condition: service_healthy
       ai_service:
-        condition: service_healthy
+        condition: service_started
     networks:
       - joblink_network
 

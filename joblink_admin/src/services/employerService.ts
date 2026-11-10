@@ -1,8 +1,10 @@
 import api from './api';
 
 export const employerService = {
-  getPendingVerifications: async () => {
-    const response = await api.get('/admin/employer-verifications');
+  getPendingVerifications: async (status?: string) => {
+    const response = await api.get('/admin/employer-verifications', {
+      params: status ? { status } : undefined,
+    });
     return response.data;
   },
 

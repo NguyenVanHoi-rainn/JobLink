@@ -1,13 +1,14 @@
 import 'dotenv/config';
 import { defineConfig } from 'prisma/config';
 
+declare const process: { env: Record<string, string | undefined> };
+
 export default defineConfig({
   schema: 'prisma/schema.prisma',
-
   migrations: {
     path: 'prisma/migrations',
+    seed: 'ts-node ./prisma/seed.ts',
   },
-
   datasource: {
     url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/joblink_db?schema=public',
   },

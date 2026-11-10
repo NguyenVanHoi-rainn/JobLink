@@ -13,6 +13,25 @@ export class AdminUserSafetyService {
     private readonly prisma: PrismaService,
   ) {}
 
+  listUsers(query: { role?: 'WORKER' | 'EMPLOYER' | 'ADMIN'; status?: 'ACTIVE' | 'LOCKED' }) {
+    return this.prisma.user.findMany({
+      where: {
+        role: query.role,
+        status: query.status,
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
   async lockUser(
     adminUserId: string,
     targetUserId: string,
